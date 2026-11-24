@@ -1,5 +1,6 @@
 [
   { "src": "videos/bride-reel.mp4", "poster": "videos/bride-reel.jpg", "title": "The bride reel", "vertical": true },
   { "src": "videos/groom-reel.mp4", "poster": "videos/groom-reel.jpg", "title": "The groom reel", "vertical": true },
-  { "src": "videos/film-1.mp4", "poster": "videos/film-1.jpg", "title": "Engagement film 1", "vertical": true }
+  { "src": "videos/film-1.mp4", "poster": "videos/film-1.jpg", "title": "Engagement film 1", "vertical": true },
+  { "src": "videos/film-2.mp4", "poster": "videos/film-2.jpg", "title": "Engagement film 2" }
 ]
