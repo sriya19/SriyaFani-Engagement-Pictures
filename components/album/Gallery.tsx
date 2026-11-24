@@ -402,7 +402,7 @@ function Chevron({ flip = false }: { flip?: boolean }) {
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
-      style={flip ? { transform: "scaleX(-1)" } : undefined}
+      className={flip ? "flipX" : undefined}
     >
       <path d="m9 5 7 7-7 7" />
     </svg>

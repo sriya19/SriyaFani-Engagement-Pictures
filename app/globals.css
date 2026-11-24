@@ -941,3 +941,4 @@ body > main {
   .tile{border-radius:0}
   .galleryHint{font-size:.88rem}
 }
+.flipX{transform:scaleX(-1)}
