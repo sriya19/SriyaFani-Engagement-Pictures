@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   api,
   Cover,
@@ -8,57 +8,141 @@ import {
   Lotus,
   Me,
   Message,
-  Modal,
   Page,
   Photo,
   say,
   size,
 } from "./shared";
+
+const VIEWER_STATE = "sfViewer";
+const viewerInHistory = () =>
+  Boolean((history.state as Record<string, unknown> | null)?.[VIEWER_STATE]);
+
 export default function Gallery({ me }: { me: Me }) {
+  const guest = me.role === "guest";
   const [items, setItems] = useState<Photo[]>([]),
     [next, setNext] = useState<number | null>(null),
     [saved, setSaved] = useState(false),
-    [show, setShow] = useState<Photo | null>(null),
-    [busy, setBusy] = useState(true),
+    [open, setOpen] = useState<number | null>(null),
+    [loading, setLoading] = useState(true),
+    [saving, setSaving] = useState(false),
+    // Photos un-hearted on the favorites tab stay in the viewer until it closes,
+    // so the picture doesn't vanish from under the guest's finger.
+    [keep, setKeep] = useState<ReadonlySet<string>>(new Set()),
     [message, setMessage] = useState("");
+  const request = useRef(0);
+  const sentinel = useRef<HTMLDivElement>(null);
+
   async function get(start: number, only: boolean) {
-    setBusy(true);
+    const ticket = ++request.current;
+    setLoading(true);
     setMessage("");
     try {
       const data = await api<Page<Photo>>(
         "photos?offset=" + start + (only ? "&favorites=1" : ""),
       );
-      setItems((old) => (start ? [...old, ...data.items] : data.items));
+      if (ticket !== request.current) return;
+      setItems((old) => {
+        if (!start) return data.items;
+        const seen = new Set(old.map((i) => i.id));
+        return [...old, ...data.items.filter((i) => !seen.has(i.id))];
+      });
       setNext(data.next);
     } catch (e) {
-      setMessage(say(e));
+      if (ticket === request.current) setMessage(say(e));
     } finally {
-      setBusy(false);
+      if (ticket === request.current) setLoading(false);
     }
   }
   useEffect(() => {
+    setKeep(new Set());
     void get(0, saved);
   }, [saved]);
+
+  const visible = saved
+    ? items.filter((i) => i.favorite || keep.has(i.id))
+    : items;
+
+  function more() {
+    if (next !== null && !loading) void get(next, saved);
+  }
+  const moreRef = useRef(more);
+  moreRef.current = more;
+
+  // Load the next page automatically as the guest scrolls toward the end.
+  useEffect(() => {
+    const el = sentinel.current;
+    if (!el || next === null || typeof IntersectionObserver === "undefined")
+      return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) moreRef.current();
+      },
+      { rootMargin: "900px 0px" },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [next, loading]);
+
   async function toggle(p: Photo) {
-    if (busy) return;
-    setBusy(true);
+    if (saving) return;
+    setSaving(true);
     try {
       const { favorite } = await api("photos/" + p.id + "/favorite", {
         on: !p.favorite,
       });
-      const changed = { ...p, favorite: favorite ? 1 : 0 };
       setItems((old) =>
-        old
-          .map((i) => (i.id === p.id ? changed : i))
-          .filter((i) => !saved || i.favorite),
+        old.map((i) =>
+          i.id === p.id ? { ...i, favorite: favorite ? 1 : 0 } : i,
+        ),
       );
-      if (show?.id === p.id) setShow(changed);
+      if (saved && !favorite) setKeep((k) => new Set(k).add(p.id));
     } catch (e) {
       setMessage(say(e));
     } finally {
-      setBusy(false);
+      setSaving(false);
     }
   }
+
+  // The phone's back button / back swipe closes the viewer instead of
+  // leaving the album.
+  function show(i: number) {
+    setMessage("");
+    setOpen(i);
+    try {
+      history.pushState({ ...(history.state || {}), [VIEWER_STATE]: true }, "");
+    } catch {
+      /* The close button still works without history support. */
+    }
+  }
+  const lastId = useRef("");
+  function finish() {
+    setOpen(null);
+    setKeep(new Set());
+    const id = lastId.current;
+    requestAnimationFrame(() =>
+      document
+        .querySelector<HTMLElement>('[data-photo="' + id + '"]')
+        ?.scrollIntoView({ block: "center" }),
+    );
+  }
+  function close() {
+    if (viewerInHistory()) history.back();
+    else finish();
+  }
+  const isOpen = open !== null;
+  useEffect(() => {
+    if (!isOpen) return;
+    const onPop = () => {
+      if (!viewerInHistory()) finish();
+    };
+    addEventListener("popstate", onPop);
+    return () => removeEventListener("popstate", onPop);
+  }, [isOpen]);
+
+  const at = open === null ? 0 : Math.min(open, visible.length - 1);
+  if (open !== null && visible[at]) lastId.current = visible[at].id;
+
   return (
     <section className="content">
       <p className="eyebrow">Sriya &amp; Fani</p>
@@ -67,89 +151,260 @@ export default function Gallery({ me }: { me: Me }) {
         <button aria-pressed={!saved} onClick={() => setSaved(false)}>
           All photos
         </button>
-        {me.role === "guest" && (
+        {guest && (
           <button aria-pressed={saved} onClick={() => setSaved(true)}>
             My favorites
           </button>
         )}
       </div>
-      <Message value={message} />
-      {!items.length && !busy && !message && (
+      {visible.length > 0 && (
+        <p className="galleryHint">
+          Tap any photo to see it full screen, then swipe to browse.
+        </p>
+      )}
+      {open === null && <Message value={message} />}
+      {!visible.length && !loading && !message && (
         <div className="empty">
           <Lotus />
           <h3>{saved ? "Your favorites" : "The album is being prepared"}</h3>
           <p>
             {saved
-              ? "Tap the heart on a photo to save it here."
+              ? "Open a photo and tap the heart to save it here."
               : "Selected photographs will appear here when the hosts publish them."}
           </p>
         </div>
       )}
-      <div className="photos">
-        {items.map((p) => (
-          <article className="photoCard" key={p.id}>
-            <button
-              className="imageButton"
-              onClick={() => setShow(p)}
-              aria-label={"Open " + p.name}
-            >
-              <Cover photo={p} />
-            </button>
-            <div className="photoMeta">
-              <button className="plain titleButton" onClick={() => setShow(p)}>
-                {p.name}
-              </button>
-              {me.role === "guest" && (
-                <button
-                  className={"iconButton" + (p.favorite ? " activeHeart" : "")}
-                  aria-label={
-                    (p.favorite ? "Remove favorite " : "Favorite ") + p.name
-                  }
-                  aria-pressed={Boolean(p.favorite)}
-                  disabled={busy}
-                  onClick={() => toggle(p)}
-                >
-                  <Icon name="heart" />
-                </button>
-              )}
-            </div>
-          </article>
+      <div className="galleryGrid">
+        {visible.map((p, i) => (
+          <button
+            key={p.id}
+            className="tile"
+            data-photo={p.id}
+            onClick={() => show(i)}
+            aria-label={"View " + p.name + " full screen"}
+          >
+            <Cover photo={p} />
+            {guest && p.favorite ? (
+              <span className="tileHeart" aria-hidden="true">
+                <Icon name="heart" />
+              </span>
+            ) : null}
+          </button>
         ))}
       </div>
-      {busy && <p role="status">Loading…</p>}
-      {next !== null && (
-        <button
-          className="button light"
-          disabled={busy}
-          onClick={() => get(next, saved)}
-        >
+      <div ref={sentinel} className="sentinel" aria-hidden="true" />
+      {loading && <p role="status">Loading…</p>}
+      {next !== null && !loading && (
+        <button className="button light moreButton" onClick={more}>
           More photos
         </button>
       )}
-      {show && (
-        <Modal wide title={show.name} close={() => setShow(null)}>
-          <div className="lightbox">
-            <Cover photo={show} />
-          </div>
-          <h3>{show.name}</h3>
-          <p>{size(show.bytes)} · Original file</p>
-          <div className="actions">
-            <Download photo={show} />
-            {me.role === "guest" && (
-              <button
-                className="button light"
-                disabled={busy}
-                aria-pressed={Boolean(show.favorite)}
-                onClick={() => toggle(show)}
-              >
-                <Icon name="heart" />
-                {show.favorite ? "Favorited" : "Favorite"}
-              </button>
-            )}
-          </div>
-          <Message value={message} />
-        </Modal>
+      {open !== null && visible[at] && (
+        <Viewer
+          photos={visible}
+          index={at}
+          guest={guest}
+          saving={saving}
+          hasMore={next !== null}
+          message={message}
+          onIndex={setOpen}
+          onToggle={toggle}
+          onNearEnd={more}
+          onClose={close}
+        />
       )}
     </section>
+  );
+}
+
+function Viewer({
+  photos,
+  index,
+  guest,
+  saving,
+  hasMore,
+  message,
+  onIndex,
+  onToggle,
+  onNearEnd,
+  onClose,
+}: {
+  photos: Photo[];
+  index: number;
+  guest: boolean;
+  saving: boolean;
+  hasMore: boolean;
+  message: string;
+  onIndex: (i: number) => void;
+  onToggle: (p: Photo) => void;
+  onNearEnd: () => void;
+  onClose: () => void;
+}) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  const track = useRef<HTMLDivElement>(null);
+  const frame = useRef(0);
+  const indexRef = useRef(index);
+  indexRef.current = index;
+  const countRef = useRef(photos.length);
+  countRef.current = photos.length;
+  const [chrome, setChrome] = useState(true);
+  const current = photos[index];
+
+  useEffect(() => {
+    const d = dialog.current;
+    d?.showModal();
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      d?.close();
+      document.body.style.overflow = previous;
+      cancelAnimationFrame(frame.current);
+    };
+  }, []);
+
+  // Start on the tapped photo, and stay on it when the phone rotates.
+  useLayoutEffect(() => {
+    const t = track.current;
+    if (!t) return;
+    let width = 0;
+    const align = () => {
+      if (t.clientWidth === width) return;
+      width = t.clientWidth;
+      t.scrollLeft = indexRef.current * width;
+    };
+    align();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(align);
+    observer.observe(t);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (hasMore && index >= photos.length - 4) onNearEnd();
+  }, [index, photos.length, hasMore]);
+
+  function onScroll() {
+    if (frame.current) return;
+    frame.current = requestAnimationFrame(() => {
+      frame.current = 0;
+      const t = track.current;
+      if (!t || !t.clientWidth) return;
+      const i = Math.max(
+        0,
+        Math.min(countRef.current - 1, Math.round(t.scrollLeft / t.clientWidth)),
+      );
+      if (i !== indexRef.current) onIndex(i);
+    });
+  }
+  function go(step: number) {
+    const t = track.current;
+    const target = indexRef.current + step;
+    if (!t || target < 0 || target >= countRef.current) return;
+    const calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    t.scrollTo({ left: target * t.clientWidth, behavior: calm ? "auto" : "smooth" });
+  }
+
+  return (
+    <dialog
+      ref={dialog}
+      className={"viewer" + (chrome ? "" : " bare")}
+      aria-label={"Photo " + (index + 1) + " of " + photos.length}
+      onCancel={(e) => {
+        e.preventDefault();
+        onClose();
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "ArrowRight") go(1);
+        else if (e.key === "ArrowLeft") go(-1);
+      }}
+    >
+      <div className="viewerTrack" ref={track} onScroll={onScroll}>
+        {photos.map((p, i) => (
+          <div
+            key={p.id}
+            className="viewerSlide"
+            role="group"
+            aria-roledescription="slide"
+            aria-label={p.name}
+            aria-hidden={i !== index}
+            onClick={() => setChrome((c) => !c)}
+          >
+            {Math.abs(i - index) <= 2 ? <Cover photo={p} eager /> : null}
+          </div>
+        ))}
+      </div>
+      <div className="viewerBar viewerTop">
+        <span className="viewerCount" aria-live="polite">
+          {index + 1} / {photos.length}
+          {hasMore ? "+" : ""}
+        </span>
+        <button
+          className="viewerIcon"
+          aria-label="Close photo viewer"
+          onClick={onClose}
+          autoFocus
+        >
+          <Icon name="close" />
+        </button>
+      </div>
+      {index > 0 && (
+        <button
+          className="viewerIcon viewerNav viewerPrev"
+          aria-label="Previous photo"
+          onClick={() => go(-1)}
+        >
+          <Chevron flip />
+        </button>
+      )}
+      {index < photos.length - 1 && (
+        <button
+          className="viewerIcon viewerNav viewerNext"
+          aria-label="Next photo"
+          onClick={() => go(1)}
+        >
+          <Chevron />
+        </button>
+      )}
+      <div className="viewerBar viewerBottom">
+        <div className="viewerInfo">
+          <span>{current.name}</span>
+          <small>{size(current.bytes)} · Original file</small>
+        </div>
+        <div className="viewerActions">
+          {guest && (
+            <button
+              className={"viewerIcon" + (current.favorite ? " activeHeart" : "")}
+              aria-label={current.favorite ? "Remove from favorites" : "Add to favorites"}
+              aria-pressed={Boolean(current.favorite)}
+              disabled={saving}
+              onClick={() => onToggle(current)}
+            >
+              <Icon name="heart" />
+            </button>
+          )}
+          <Download key={current.id} photo={current} />
+        </div>
+        <Message value={message} />
+      </div>
+    </dialog>
+  );
+}
+
+function Chevron({ flip = false }: { flip?: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="22"
+      height="22"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      style={flip ? { transform: "scaleX(-1)" } : undefined}
+    >
+      <path d="m9 5 7 7-7 7" />
+    </svg>
   );
 }
