@@ -6,6 +6,7 @@ import {
   logout,
   smsReady,
   notifyHost,
+  throttle,
 } from "./auth.js";
 import {
   browseDrive,
@@ -60,7 +61,7 @@ async function handle(request, env, ctx, guestWeb) {
   if (path === "/me" && method === "GET") {
     const a = await identity(request, env, guestWeb);
     if (a.status === "pending" && env.WEB_PUSH_PRIVATE_JWK) ctx.waitUntil(deliverPush(env).catch(() => {}));
-    return json({ role: a.role, status: a.status, name: a.name, smsEnabled: smsReady(env) });
+    return json({ role: a.role, status: a.status, name: a.name, smsEnabled: smsReady(env), messages: true });
   }
   if (path === "/otp/start" && method === "POST") return start(request, env, guestWeb);
   if (path === "/otp/check" && method === "POST")
@@ -193,8 +194,25 @@ async function handle(request, env, ctx, guestWeb) {
         db.prepare("DELETE FROM favorites WHERE guest=?").bind(id),
         db.prepare("DELETE FROM activity WHERE guest=?").bind(id),
         db.prepare("DELETE FROM push_subscriptions WHERE owner=?").bind(id),
+        db.prepare("DELETE FROM messages WHERE guest=?").bind(id),
         db.prepare("DELETE FROM guests WHERE id=?").bind(id),
       ]);
+      return json({ ok: true });
+    }
+    if (path === "/host/messages" && method === "GET")
+      return json(
+        await paginate(
+          db.prepare(
+            "SELECT m.id,m.body,m.created,g.name AS guest,g.phone FROM messages m JOIN guests g ON g.id=m.guest ORDER BY m.id DESC LIMIT ? OFFSET ?",
+          ),
+          [],
+          url,
+        ),
+      );
+    if (path === "/host/messages/delete" && method === "POST") {
+      const { id } = await body(request);
+      if (!Number.isInteger(id)) fail(400, "Choose a message.");
+      await db.prepare("DELETE FROM messages WHERE id=?").bind(id).run();
       return json({ ok: true });
     }
     if (path === "/host/activity" && method === "GET")
@@ -237,6 +255,16 @@ async function handle(request, env, ctx, guestWeb) {
         url,
       ),
     );
+  }
+  // Notes from approved guests. Only the hosts can read them.
+  if (path === "/messages" && method === "POST") {
+    if (actor.role !== "guest") fail(403, "Only guests can leave a note.");
+    const input = await body(request);
+    const text = typeof input.text === "string" ? input.text.trim() : "";
+    if (!text || text.length > 2000) fail(400, "Write a note of up to 2,000 characters.");
+    await throttle(db, "message:" + actor.id, 3600000, 10, "You’ve sent several notes already. Please try again a little later.");
+    await db.prepare("INSERT INTO messages(guest,body,created) VALUES(?,?,?)").bind(actor.id, text, Date.now()).run();
+    return json({ sent: true });
   }
   const m = path.match(photoRoute);
   if (m && (m[2] === "preview" ? method === "GET" : method === "POST")) {

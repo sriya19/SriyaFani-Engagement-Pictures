@@ -954,3 +954,21 @@ body > main {
   .viewerActions .button svg{width:18px;height:18px;flex:none}
 }
 .deleteGuest{color:#9a3f3f}
+/* Guest notes: a small letter at the end of the album, read only by the hosts. */
+.guestNote{max-width:620px;margin:3rem auto 1rem;padding:clamp(1.4rem,4vw,2.4rem);border:1px solid var(--line);background:#f3f0e3;text-align:center;position:relative}
+.guestNote::before{content:"";position:absolute;inset:6px;border:1px solid #c3b89466;pointer-events:none}
+.guestNote .formLotus{margin:0 auto .6rem}
+.guestNote h2{font:500 clamp(2rem,6vw,2.6rem)/1.05 var(--serif);letter-spacing:-.03em;margin:.2rem 0 .6rem}
+.guestNote p{color:var(--muted);margin:0 auto 1rem;max-width:440px}
+.guestNote form{position:relative}
+.guestNote textarea{width:100%;min-height:120px;padding:.8rem .9rem;border:1px solid #b5b49d;border-radius:4px;background:#fffdf7;color:var(--ink);font:400 1rem/1.5 var(--sans);resize:vertical}
+.guestNote textarea:focus-visible{outline:2px solid var(--gold);outline-offset:1px}
+.noteFoot{display:flex;align-items:center;justify-content:space-between;gap:.8rem;margin-top:.7rem}
+.noteFoot small{color:var(--muted)}
+.srOnly{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.notes{display:grid;gap:.9rem;margin-bottom:1rem}
+.noteCard{border:1px solid var(--line);background:#fcfaf2;padding:1.1rem 1.2rem}
+.noteCard p{margin:0 0 .9rem;white-space:pre-wrap;overflow-wrap:anywhere;font:500 1.25rem/1.45 var(--serif)}
+.noteCard footer{display:flex;align-items:flex-end;justify-content:space-between;gap:.8rem;border-top:1px solid var(--line);padding-top:.7rem}
+.noteCard footer span{display:grid}
+.noteCard small{color:var(--muted);font-size:.84rem}

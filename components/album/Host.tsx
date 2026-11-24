@@ -29,6 +29,13 @@ type EventRow = {
   action: string;
   created: number;
 };
+type Note = {
+  id: number;
+  body: string;
+  created: number;
+  guest: string;
+  phone: string;
+};
 const labels: { [key: string]: string } = {
   download: "Original download requested",
   favorite: "Added to favorites",
@@ -41,6 +48,7 @@ export default function Host() {
     [guests, setGuests] = useState<Guest[]>([]),
     [confirmDelete, setConfirmDelete] = useState(""),
     [events, setEvents] = useState<EventRow[]>([]),
+    [notes, setNotes] = useState<Note[]>([]),
     [next, setNext] = useState<number | null>(null),
     [busy, setBusy] = useState(false),
     [note, setNote] = useState("");
@@ -60,6 +68,8 @@ export default function Host() {
       }
       if (target === "guests")
         setGuests((v) => (start ? [...v, ...r.items] : r.items));
+      if (target === "messages")
+        setNotes((v) => (start ? [...v, ...r.items] : r.items));
       if (target === "activity")
         setEvents((v) => (start ? [...v, ...r.items] : r.items));
       setNext(r.next);
@@ -142,6 +152,7 @@ export default function Host() {
           ["photos", "Photos"],
           ["import", "Add photos"],
           ["guests", pending ? "Guest requests (" + pending + ")" : "Guest requests"],
+          ["messages", "Messages"],
           ["activity", "Activity"],
         ].map(([v, t]) => (
           <button
@@ -294,6 +305,46 @@ export default function Host() {
                 <p>
                   New requests appear here when guests submit their name and mobile number.
                 </p>
+              </div>
+            )
+          )}
+        </>
+      )}
+      {tab === "messages" && (
+        <>
+          {notes.length ? (
+            <div className="notes">
+              {notes.map((n) => (
+                <article className="noteCard" key={n.id}>
+                  <p>{n.body}</p>
+                  <footer>
+                    <span>
+                      <strong>{n.guest}</strong>
+                      <small>{n.phone} · {when(n.created)}</small>
+                    </span>
+                    <button
+                      className="textButton deleteGuest"
+                      type="button"
+                      disabled={busy}
+                      onClick={() => {
+                        if (confirmDelete !== "note" + n.id) return setConfirmDelete("note" + n.id);
+                        setConfirmDelete("");
+                        void change("messages/delete", { id: n.id });
+                      }}
+                      onBlur={() => setConfirmDelete((c) => (c === "note" + n.id ? "" : c))}
+                    >
+                      {confirmDelete === "note" + n.id ? "Tap again to delete" : "Delete"}
+                    </button>
+                  </footer>
+                </article>
+              ))}
+            </div>
+          ) : (
+            !busy && (
+              <div className="empty">
+                <Lotus />
+                <h3>No notes yet</h3>
+                <p>Notes guests leave at the end of the album appear here. Only hosts can read them.</p>
               </div>
             )
           )}

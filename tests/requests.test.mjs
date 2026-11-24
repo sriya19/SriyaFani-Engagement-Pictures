@@ -81,6 +81,16 @@ test("manual requests are independent per browser and approvals deliver private 
     assert.equal((await api("host/guest",approve)).status,200); await settle();
     assert.deepEqual(receipts.at(-1),[guestSub.endpoint,"approved"]);
     assert.equal((await api("photos",{headers})).status,200);
+    assert.equal((await (await api("me",{headers})).json()).messages,true);
+    assert.equal((await api("messages",{headers,data:{text:"   "}})).status,400);
+    assert.equal((await api("messages",{headers,data:{text:"x".repeat(2001)}})).status,400);
+    assert.equal((await api("messages",{headers,data:{text:"  Congratulations, you two!  "}})).status,200);
+    assert.equal((await api("host/messages",{headers})).status,403);
+    const notes=await (await api("host/messages",{headers:admin,host:true})).json();
+    assert.deepEqual(notes.items.map(n=>[n.body,n.guest]),[["Congratulations, you two!","Test guest"]]);
+    assert.equal((await api("host/messages/delete",{data:{id:notes.items[0].id},headers:admin,host:true})).status,200);
+    assert.equal((await (await api("host/messages",{headers:admin,host:true})).json()).items.length,0);
+    assert.equal((await api("messages",{headers,data:{text:"One more"}})).status,200);
     await api("host/guest",approve); await settle(); assert.equal(receipts.length,2);
     const late=browser("late"); await api("notifications/subscribe",{headers,data:late}); await settle();
     assert.deepEqual(receipts.at(-1),[late.endpoint,"approved"]);
@@ -90,6 +100,7 @@ test("manual requests are independent per browser and approvals deliver private 
     assert.equal((await (await api("host/requests-count",{headers:admin,host:true})).json()).pending,1);
     await api("host/guest",{...approve,data:{id:guest.id,status:"revoked"}}); await settle();
     assert.equal((await api("photos",{headers})).status,403);
+    assert.equal((await api("messages",{headers,data:{text:"After revoke"}})).status,403);
     const remove={data:{id:guest.id},headers:admin,host:true};
     assert.equal((await api("host/guest/delete",{...remove,headers:{}})).status,403);
     await api("host/guest",approve); await settle();
@@ -99,7 +110,7 @@ test("manual requests are independent per browser and approvals deliver private 
     sql.prepare("INSERT INTO activity(guest,photo,action,created) VALUES(?,?,?,?)").run(guest.id,"p","download",1);
     sql.prepare("INSERT INTO favorites(guest,photo) VALUES(?,?)").run(guest.id,"p");
     assert.equal((await api("host/guest/delete",remove)).status,200);
-    for (const [table,column] of [["guests","id"],["sessions","guest"],["activity","guest"],["favorites","guest"],["push_subscriptions","owner"]])
+    for (const [table,column] of [["guests","id"],["sessions","guest"],["activity","guest"],["favorites","guest"],["push_subscriptions","owner"],["messages","guest"]])
       assert.equal(sql.prepare(`SELECT count(*) AS n FROM ${table} WHERE ${column}=?`).get(guest.id).n,0,table);
     assert.equal(sql.prepare("SELECT count(*) AS n FROM guests").get().n,1);
     assert.equal((await api("photos",{headers})).status,403);

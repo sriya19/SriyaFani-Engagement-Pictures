@@ -194,6 +194,9 @@ export default function Gallery({ me }: { me: Me }) {
       </div>
       <div ref={sentinel} className="sentinel" aria-hidden="true" />
       {loading && <p role="status">Loading…</p>}
+      {guest && me.messages && !saved && !loading && next === null && visible.length > 0 && (
+        <GuestNote />
+      )}
       {next !== null && !loading && (
         <button className="button light moreButton" onClick={more}>
           More photos
@@ -212,6 +215,64 @@ export default function Gallery({ me }: { me: Me }) {
           onNearEnd={more}
           onClose={close}
         />
+      )}
+    </section>
+  );
+}
+
+function GuestNote() {
+  const [text, setText] = useState(""),
+    [busy, setBusy] = useState(false),
+    [sent, setSent] = useState(false),
+    [error, setError] = useState("");
+  async function send(e: React.FormEvent) {
+    e.preventDefault();
+    if (busy || !text.trim()) return;
+    setBusy(true);
+    setError("");
+    try {
+      await api("messages", { text });
+      setText("");
+      setSent(true);
+    } catch (err) {
+      setError(say(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <section className="guestNote" aria-labelledby="guest-note-title">
+      <Lotus className="formLotus" />
+      <p className="eyebrow">Before you go</p>
+      <h2 id="guest-note-title">Leave us a note</h2>
+      {sent ? (
+        <>
+          <p>Thank you! Your note is on its way to us, and it means the world.</p>
+          <button className="button light" type="button" onClick={() => setSent(false)}>
+            Write another note
+          </button>
+        </>
+      ) : (
+        <form onSubmit={send}>
+          <p>A wish, a memory or a few sweet words. Only Sriya &amp; Fani will read it.</p>
+          <label className="srOnly" htmlFor="guest-note-text">Your note</label>
+          <textarea
+            id="guest-note-text"
+            rows={4}
+            maxLength={2000}
+            placeholder="Write your note here…"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            disabled={busy}
+          />
+          <div className="noteFoot">
+            <small>{text.length > 1800 ? 2000 - text.length + " characters left" : ""}</small>
+            <button className="button" type="submit" disabled={busy || !text.trim()}>
+              {busy ? "Sending…" : "Send with love"}
+            </button>
+          </div>
+          <Message value={error} />
+        </form>
       )}
     </section>
   );
