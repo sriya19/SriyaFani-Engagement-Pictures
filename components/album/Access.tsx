@@ -14,7 +14,7 @@ export default function Access({
 }) {
   const [name, setName] = useState(""),
     [phone, setPhone] = useState(""),
-    [country, setCountry] = useState("+1"),
+    [country, setCountry] = useState("+91"),
     [code, setCode] = useState(""),
     [sent, setSent] = useState(false),
     [busy, setBusy] = useState(false),
@@ -192,10 +192,8 @@ export default function Access({
                 value={country}
                 onChange={(e) => setCountry(e.target.value)}
               >
-                <option value="+1">US / CA +1</option>
-                <option value="+91">India +91</option>
-                <option value="+44">UK +44</option>
-                <option value="+971">UAE +971</option>
+                <option value="+91">India (+91)</option>
+                <option value="+1">US (+1)</option>
                 <option value="other">Other</option>
               </select>
               <input
