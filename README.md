@@ -54,3 +54,16 @@ Guests request access with their name and phone number. A new browser needs its 
 Direct uploads support common image formats up to 90 MiB per photo. Browser-readable images receive a smaller preview. Drive imports retain the original and verify the source checksum when available. A file without a compatible thumbnail can still be downloaded in its original format.
 
 Drive sharing and album access are independent. A Restricted source folder keeps its own link private. Copies stored by this album continue working if you later change Drive sharing. If the photographer controls the source, you can put selected originals in your own Restricted folder.
+
+## Add videos
+
+Upload videos to the Google Drive folder **Sriya & Fani · Album Videos** (shared as *Anyone with the link · Viewer*, so the players can load). Then add each file to `public/videos.json`, newest first, and publish the guest site:
+
+```json
+[
+  { "id": "DRIVE_FILE_ID", "title": "The ring moment" },
+  { "id": "ANOTHER_FILE_ID", "title": "Reel", "vertical": true }
+]
+```
+
+The file ID is the part of the Drive link between `/d/` and `/view`. Use `"vertical": true` for phone-shot portrait videos. On the published guest site you can also edit `videos.json` directly on the `gh-pages` branch; the Videos tab reads it on every visit.

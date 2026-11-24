@@ -31,6 +31,7 @@ export default function Gallery({ me }: { me: Me }) {
   const [items, setItems] = useState<Photo[]>([]),
     [next, setNext] = useState<number | null>(null),
     [saved, setSaved] = useState(false),
+    [videos, setVideos] = useState(false),
     [open, setOpen] = useState<number | null>(null),
     [loading, setLoading] = useState(true),
     [saving, setSaving] = useState(false),
@@ -90,7 +91,7 @@ export default function Gallery({ me }: { me: Me }) {
     );
     observer.observe(el);
     return () => observer.disconnect();
-  }, [next, loading]);
+  }, [next, loading, videos]);
 
   async function toggle(p: Photo) {
     if (saving) return;
@@ -156,15 +157,19 @@ export default function Gallery({ me }: { me: Me }) {
       <p className="eyebrow">Sriya &amp; Fani</p>
       <h1>The engagement album</h1>
       <div className="tabs">
-        <button aria-pressed={!saved} onClick={() => setSaved(false)}>
+        <button aria-pressed={!saved && !videos} onClick={() => { setVideos(false); setSaved(false); }}>
           All photos
         </button>
+        <button aria-pressed={videos} onClick={() => setVideos(true)}>
+          Videos
+        </button>
         {guest && (
-          <button aria-pressed={saved} onClick={() => setSaved(true)}>
+          <button aria-pressed={saved && !videos} onClick={() => { setVideos(false); setSaved(true); }}>
             My favorites
           </button>
         )}
       </div>
+      {videos ? <VideosView /> : <>
       {!saved && (
         <p className="albumNote">
           <Lotus />
@@ -216,6 +221,7 @@ export default function Gallery({ me }: { me: Me }) {
           More photos
         </button>
       )}
+      </>}
       {open !== null && visible[at] && (
         <Viewer
           photos={visible}
@@ -231,6 +237,57 @@ export default function Gallery({ me }: { me: Me }) {
         />
       )}
     </section>
+  );
+}
+
+type Video = { id: string; title?: string; vertical?: boolean };
+// Videos live in the hosts' Google Drive folder "Sriya & Fani · Album Videos".
+// public/videos.json lists the Drive file IDs to show, newest first.
+function VideosView() {
+  const [list, setList] = useState<Video[] | null>(null),
+    [error, setError] = useState("");
+  useEffect(() => {
+    let live = true;
+    fetch(import.meta.env.BASE_URL + "videos.json", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data: Video[]) => {
+        if (live) setList(Array.isArray(data) ? data.filter((v) => /^[\w-]{10,}$/.test(v?.id || "")) : []);
+      })
+      .catch(() => live && (setError("Videos couldn’t load. Please try again."), setList([])));
+    return () => { live = false; };
+  }, []);
+  if (!list) return <p role="status">Loading videos…</p>;
+  return (
+    <>
+      <Message value={error} />
+      {list.length ? (
+        <div className="videoList">
+          {list.map((v) => (
+            <figure className={"videoCard" + (v.vertical ? " vertical" : "")} key={v.id}>
+              <div className="videoFrame">
+                <iframe
+                  src={"https://drive.google.com/file/d/" + v.id + "/preview"}
+                  title={v.title || "Engagement video"}
+                  loading="lazy"
+                  allow="autoplay; fullscreen"
+                  allowFullScreen
+                  referrerPolicy="no-referrer"
+                />
+              </div>
+              {v.title && <figcaption>{v.title}</figcaption>}
+            </figure>
+          ))}
+        </div>
+      ) : (
+        !error && (
+          <div className="empty">
+            <Lotus />
+            <h3>Videos are on their way</h3>
+            <p>Our engagement videos will appear here soon. Check back in a little while!</p>
+          </div>
+        )
+      )}
+    </>
   );
 }
 
