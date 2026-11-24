@@ -998,3 +998,8 @@ body > main {
 .titleEdit{display:flex;gap:.5rem;align-items:center}
 .titleEdit input{flex:1;min-width:0;height:38px;padding:.3rem .6rem;border:1px solid #b5b49d;border-radius:4px;font:500 1.05rem var(--serif)}
 .videoCard.classic .videoFrame{aspect-ratio:4/3}
+.videoCard figcaption{display:grid;gap:.7rem}
+.videoSave{display:flex;flex-wrap:wrap;gap:.6rem;font:400 1rem var(--sans)}
+.videoSave .button{text-decoration:none;justify-content:center}
+.videoSave .message{flex-basis:100%;margin:0}
+@media (max-width:620px){.videoSave>.button{flex:1 1 0;min-width:0;white-space:nowrap;padding:.6rem .5rem;font-size:.95rem}}

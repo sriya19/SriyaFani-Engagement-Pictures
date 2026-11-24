@@ -2,6 +2,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   api,
+  canSaveToPhotos,
   Cover,
   Download,
   Icon,
@@ -286,7 +287,12 @@ function VideosView({ server }: { server: boolean }) {
                 />
                 )}
               </div>
-              {v.title && <figcaption>{v.title}</figcaption>}
+              {(v.title || v.src) && (
+                <figcaption>
+                  {v.title && <span>{v.title}</span>}
+                  {v.src && v.link && <VideoSave url={v.link} name={videoFileName(v)} />}
+                </figcaption>
+              )}
             </figure>
           ))}
         </div>
@@ -300,6 +306,64 @@ function VideosView({ server }: { server: boolean }) {
         )
       )}
     </>
+  );
+}
+
+function videoFileName(v: Video) {
+  const base = (v.title || "video").replace(/[^\w -]+/g, "").trim().replace(/\s+/g, "-") || "video";
+  return "Sriya-Fani-" + base + ".mp4";
+}
+
+// Same two choices as photos: the phone's save sheet (Save Video to Photos)
+// and a plain file download, which starts right away.
+function VideoSave({ url, name }: { url: string; name: string }) {
+  const [share] = useState(canSaveToPhotos);
+  const [busy, setBusy] = useState(false),
+    [ready, setReady] = useState(false),
+    [error, setError] = useState("");
+  const file = useRef<File | null>(null);
+  async function save() {
+    if (busy) return;
+    setBusy(true);
+    setError("");
+    setReady(false);
+    try {
+      if (!file.current) {
+        const r = await fetch(url);
+        if (!r.ok) throw new Error("The video couldn’t be prepared. Please try again.");
+        file.current = new File([await r.blob()], name, { type: "video/mp4" });
+      }
+      if (navigator.canShare?.({ files: [file.current] }))
+        await navigator.share({ files: [file.current], title: name });
+      else {
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(file.current);
+        a.download = name;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 60_000);
+      }
+    } catch (e) {
+      const kind = (e as { name?: string })?.name;
+      if (kind === "NotAllowedError") setReady(true);
+      else if (kind !== "AbortError") setError(say(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <span className="videoSave">
+      {share && (
+        <button className="button" type="button" disabled={busy} onClick={save}>
+          <Icon name="photo" />
+          {busy ? "Preparing…" : ready ? "Ready · tap to save" : "Save to Photos"}
+        </button>
+      )}
+      <a className={"button" + (share ? " light" : "")} href={url} download={name}>
+        <Icon name="download" />
+        Download
+      </a>
+      <Message value={error} />
+    </span>
   );
 }
 

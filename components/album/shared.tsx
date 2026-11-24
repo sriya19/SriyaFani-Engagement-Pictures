@@ -242,7 +242,7 @@ async function mediaBlob(photo: Photo, action: "original" | "preview", signal: A
 }
 // Phones get a "Save to Photos" button that opens the system save sheet
 // (Save Image / Save to Files on iPhone, Photos or Files apps on Android).
-function canSaveToPhotos() {
+export function canSaveToPhotos() {
   try {
     return (
       typeof navigator.canShare === "function" &&
