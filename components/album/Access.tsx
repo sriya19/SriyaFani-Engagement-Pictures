@@ -214,9 +214,9 @@ export default function Access({
             </div>
           </>
         )}
-        {!sent && (
+        {!sent && hostPage && (
           <p className="privacy">
-            {hostPage ? "We’ll send a verification text to your configured host number." : "The hosts can see the name and number you submit, your favorites and your original photo download requests."}
+            We’ll send a verification text to your configured host number.
           </p>
         )}
         <button className="button full" disabled={busy} type="submit">
