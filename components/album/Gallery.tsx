@@ -240,7 +240,7 @@ export default function Gallery({ me }: { me: Me }) {
   );
 }
 
-type Video = { id: string; title?: string; vertical?: boolean; link?: string; src?: string; poster?: string };
+type Video = { id: string; title?: string; vertical?: boolean; ratio?: "4:3"; link?: string; src?: string; poster?: string };
 const siteFile = (path?: string) => (path && /^videos\/[\w.-]+\.(mp4|jpg)$/.test(path) ? import.meta.env.BASE_URL + path : undefined);
 // Videos live in the hosts' Google Drive folder "Sriya & Fani · Album Videos".
 // public/videos.json lists the Drive file IDs to show, newest first.
@@ -271,7 +271,7 @@ function VideosView({ server }: { server: boolean }) {
       {list.length ? (
         <div className="videoList">
           {list.map((v) => (
-            <figure className={"videoCard" + (v.vertical ? " vertical" : "")} key={v.id}>
+            <figure className={"videoCard" + (v.vertical ? " vertical" : v.ratio === "4:3" ? " classic" : "")} key={v.id}>
               <div className="videoFrame">
                 {v.link ? (
                   <video src={v.link} poster={v.poster} controls preload="metadata" playsInline />

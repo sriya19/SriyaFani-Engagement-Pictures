@@ -997,3 +997,4 @@ body > main {
 .hostVideoMeta .actions{margin-top:.4rem;display:flex;flex-wrap:wrap;gap:.6rem;align-items:center}
 .titleEdit{display:flex;gap:.5rem;align-items:center}
 .titleEdit input{flex:1;min-width:0;height:38px;padding:.3rem .6rem;border:1px solid #b5b49d;border-radius:4px;font:500 1.05rem var(--serif)}
+.videoCard.classic .videoFrame{aspect-ratio:4/3}
