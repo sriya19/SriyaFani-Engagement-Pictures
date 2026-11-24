@@ -942,3 +942,14 @@ body > main {
   .galleryHint{font-size:.88rem}
 }
 .flipX{transform:scaleX(-1)}
+.viewer .button.light{background:transparent;color:#f6f1e2;border-color:#f6f1e299}
+.viewer .button.light:hover{background:#1f3a31}
+.viewer .button:disabled{opacity:.7}
+.viewerMeta{display:flex;align-items:center;gap:.75rem;min-width:0;flex:1 1 220px}
+@media (max-width:620px){
+  .viewerMeta{flex-basis:100%}
+  .viewerActions{flex:1 1 100%}
+  .viewerActions>.button,.viewerActions form{flex:1 1 0;min-width:0}
+  .viewerActions .button{width:100%;justify-content:center;gap:.4rem;padding:.6rem .5rem;font-size:.95rem;white-space:nowrap}
+  .viewerActions .button svg{width:18px;height:18px;flex:none}
+}

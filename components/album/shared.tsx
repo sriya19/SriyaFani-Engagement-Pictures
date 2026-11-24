@@ -228,17 +228,6 @@ export function Message({ value }: { value: string }) {
     </p>
   ) : null;
 }
-export function Download({ photo }: { photo: Photo }) {
-  if (isGuestWebsite()) return <GuestDownload key={photo.id} photo={photo} />;
-  return (
-    <form method="post" action={"/api/photos/" + photo.id + "/original"}>
-      <button className="button" type="submit">
-        <Icon name="download" />
-        Download original
-      </button>
-    </form>
-  );
-}
 async function mediaBlob(photo: Photo, action: "original" | "preview", signal: AbortSignal) {
   const response = await albumFetch("photos/" + photo.id + "/" + action, {
     method: action === "original" ? "POST" : "GET", signal,
@@ -249,31 +238,101 @@ async function mediaBlob(photo: Photo, action: "original" | "preview", signal: A
   }
   return response.blob();
 }
-function GuestDownload({ photo }: { photo: Photo }) {
-  const [url, setUrl] = useState("");
-  const [busy, setBusy] = useState(false);
+// Phones get a "Save to Photos" button that opens the system save sheet
+// (Save Image / Save to Files on iPhone, Photos or Files apps on Android).
+function canSaveToPhotos() {
+  try {
+    return (
+      typeof navigator.canShare === "function" &&
+      matchMedia("(pointer: coarse)").matches &&
+      navigator.canShare({
+        files: [new File([new Uint8Array(1)], "photo.jpg", { type: "image/jpeg" })],
+      })
+    );
+  } catch {
+    return false;
+  }
+}
+function saveFile(file: File) {
+  const url = URL.createObjectURL(file);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = file.name;
+  link.rel = "noopener";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+export function Download({ photo }: { photo: Photo }) {
+  return <SaveButtons key={photo.id} photo={photo} />;
+}
+function SaveButtons({ photo }: { photo: Photo }) {
+  const [share] = useState(canSaveToPhotos);
+  const [busy, setBusy] = useState<"" | "photos" | "file">("");
+  const [ready, setReady] = useState(false);
   const [error, setError] = useState("");
+  const original = useRef<File | null>(null);
   const request = useRef<AbortController | null>(null);
   useEffect(() => () => request.current?.abort(), []);
-  useEffect(() => () => { if (url) URL.revokeObjectURL(url); }, [url]);
-  async function prepare() {
-    if (busy) return;
-    setBusy(true);
-    setError("");
+  async function fetchOriginal() {
+    if (original.current) return original.current;
     const controller = new AbortController();
     request.current = controller;
+    const blob = await mediaBlob(photo, "original", controller.signal);
+    original.current = new File([blob], photo.name, {
+      type: blob.type || "application/octet-stream",
+    });
+    return original.current;
+  }
+  async function run(kind: "photos" | "file") {
+    if (busy) return;
+    setBusy(kind);
+    setError("");
+    setReady(false);
     try {
-      const blob = await mediaBlob(photo, "original", controller.signal);
-      if (!controller.signal.aborted) setUrl(URL.createObjectURL(blob));
+      const file = await fetchOriginal();
+      if (kind === "photos" && navigator.canShare?.({ files: [file] }))
+        await navigator.share({ files: [file], title: photo.name });
+      else saveFile(file);
     } catch (e) {
-      if (!controller.signal.aborted) setError(say(e));
+      const name = (e as { name?: string })?.name;
+      if (name === "AbortError") {
+        /* The guest closed the save sheet. */
+      } else if (name === "NotAllowedError" && kind === "photos") {
+        // Large originals can take longer than the phone allows between the
+        // tap and the save sheet. The file is ready now, so one more tap opens it.
+        setReady(true);
+      } else setError(say(e));
     } finally {
-      if (!controller.signal.aborted) setBusy(false);
+      if (!request.current?.signal.aborted) setBusy("");
     }
   }
+  const plainForm = !share && !isGuestWebsite();
   return <>
-    {url ? <a className="button" href={url} download={photo.name}><Icon name="download" />Save original</a> :
-      <button className="button" disabled={busy} onClick={prepare}><Icon name="download" />{busy ? "Preparing original…" : "Download original"}</button>}
+    {share && (
+      <button className="button" disabled={Boolean(busy)} onClick={() => run("photos")}>
+        <Icon name="photo" />
+        {busy === "photos" ? "Preparing…" : ready ? "Ready · tap to save" : "Save to Photos"}
+      </button>
+    )}
+    {plainForm ? (
+      <form method="post" action={"/api/photos/" + photo.id + "/original"}>
+        <button className="button" type="submit">
+          <Icon name="download" />
+          Download original
+        </button>
+      </form>
+    ) : (
+      <button
+        className={"button" + (share ? " light" : "")}
+        disabled={Boolean(busy)}
+        onClick={() => run("file")}
+      >
+        <Icon name="download" />
+        {busy === "file" ? "Preparing…" : share ? "Download" : "Download original"}
+      </button>
+    )}
     <Message value={error} />
   </>;
 }

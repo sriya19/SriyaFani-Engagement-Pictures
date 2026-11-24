@@ -366,11 +366,11 @@ function Viewer({
         </button>
       )}
       <div className="viewerBar viewerBottom">
-        <div className="viewerInfo">
-          <span>{current.name}</span>
-          <small>{size(current.bytes)} · Original file</small>
-        </div>
-        <div className="viewerActions">
+        <div className="viewerMeta">
+          <div className="viewerInfo">
+            <span>{current.name}</span>
+            <small>{size(current.bytes)} · Original file</small>
+          </div>
           {guest && (
             <button
               className={"viewerIcon" + (current.favorite ? " activeHeart" : "")}
@@ -382,6 +382,8 @@ function Viewer({
               <Icon name="heart" />
             </button>
           )}
+        </div>
+        <div className="viewerActions">
           <Download key={current.id} photo={current} />
         </div>
         <Message value={message} />
