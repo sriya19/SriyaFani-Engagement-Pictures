@@ -25,6 +25,8 @@ import {
   uploadPreview,
 } from "./media.js";
 import { privateHeaders } from "./common.js";
+import { requestAccess } from "./requests.js";
+import { deliverPush, pushPublicKey, queuePush, subscribePush } from "./push.js";
 const uuid = "[a-f0-9-]{36}";
 const photoRoute = new RegExp(
   "^/photos/(" + uuid + ")/(preview|original|favorite)$",
@@ -53,8 +55,11 @@ async function handle(request, env, ctx, guestWeb) {
   if (method === "POST" && !guestWeb) sameOrigin(request);
   if (guestWeb && path.startsWith("/host/")) fail(403, "Guest access only.");
   const db = env.DB;
+  if (path === "/access/request" && method === "POST") return requestAccess(request, env, ctx, guestWeb);
+  if (path === "/notifications/key" && method === "GET") return json({ key: pushPublicKey(env) });
   if (path === "/me" && method === "GET") {
     const a = await identity(request, env, guestWeb);
+    if (a.status === "pending" && env.WEB_PUSH_PRIVATE_JWK) ctx.waitUntil(deliverPush(env).catch(() => {}));
     return json({ role: a.role, status: a.status, name: a.name, smsEnabled: smsReady(env) });
   }
   if (path === "/otp/start" && method === "POST") return start(request, env, guestWeb);
@@ -62,9 +67,20 @@ async function handle(request, env, ctx, guestWeb) {
     return finish(request, env, ctx, guestWeb);
   if (path === "/logout" && method === "POST") return logout(request, env, guestWeb);
   const actor = await identity(request, env, guestWeb);
+  if (path === "/notifications/subscribe" && method === "POST") {
+    if (actor.role === "visitor") fail(403, "Request album access first.");
+    await subscribePush(env, actor.role === "host" ? "hosts" : actor.id, await body(request));
+    ctx.waitUntil(deliverPush(env).catch(() => {}));
+    return json({ enabled: true });
+  }
   if (path.startsWith("/host/")) {
     if (actor.role !== "host")
       fail(403, "Please sign in with the host account.");
+    if (path === "/host/requests-count" && method === "GET") {
+      ctx.waitUntil(deliverPush(env).catch(() => {}));
+      return json(await db.prepare("SELECT COUNT(*) AS pending FROM guests WHERE status='pending' AND (phone_verified=0 OR phone<>?)")
+        .bind(env.OWNER_PHONE || "").first());
+    }
     if (path === "/host/status" && method === "GET") {
       const folder = await configuredFolder(env);
       return json({
@@ -139,7 +155,7 @@ async function handle(request, env, ctx, guestWeb) {
       return json(
         await paginate(
           db.prepare(
-            "SELECT id,name,phone,status,created FROM guests WHERE phone<>? ORDER BY CASE WHEN status='pending' THEN 0 ELSE 1 END,created DESC,id LIMIT ? OFFSET ?",
+            "SELECT id,name,phone,status,created FROM guests WHERE (phone_verified=0 OR phone<>?) ORDER BY CASE WHEN status='pending' THEN 0 ELSE 1 END,created DESC,id LIMIT ? OFFSET ?",
           ),
           [env.OWNER_PHONE || ""],
           url,
@@ -152,13 +168,16 @@ async function handle(request, env, ctx, guestWeb) {
         typeof input.id !== "string"
       )
         fail(400, "Choose a guest and access level.");
-      const change = await db
-        .prepare(
-          "UPDATE guests SET status=? WHERE id=? AND phone<>? RETURNING id",
-        )
-        .bind(input.status, input.id, env.OWNER_PHONE || "")
-        .first();
-      if (!change) fail(404, "Guest unavailable.");
+      const allowed = await db.prepare("SELECT id FROM guests WHERE id=? AND (phone_verified=0 OR phone<>?)")
+        .bind(input.id, env.OWNER_PHONE || "").first();
+      if (!allowed) fail(404, "Guest unavailable.");
+      // Queue a push only for a real transition, atomically with the approval.
+      const notification = input.status === "approved"
+        ? db.prepare("UPDATE push_subscriptions SET delivery=?,retry_at=0 WHERE owner=? AND EXISTS(SELECT 1 FROM guests WHERE id=? AND status<>'approved')")
+            .bind(crypto.randomUUID(), input.id, input.id)
+        : queuePush(db, input.id, null);
+      await db.batch([notification, db.prepare("UPDATE guests SET status=? WHERE id=?").bind(input.status, input.id)]);
+      if (input.status === "approved") ctx.waitUntil(deliverPush(env).catch(() => {}));
       return json({ ok: true });
     }
     if (path === "/host/activity" && method === "GET")
@@ -185,7 +204,7 @@ async function handle(request, env, ctx, guestWeb) {
     fail(404, "Page unavailable.");
   }
   if (actor.role !== "host" && actor.status !== "approved")
-    fail(403, "Verified album access is required.");
+    fail(403, "Host approval is required to view this album.");
   if (path === "/photos" && method === "GET") {
     const only = url.searchParams.get("favorites") === "1";
     const sql =

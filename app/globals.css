@@ -900,3 +900,7 @@ body > main {
       color 0.15s ease;
   }
 }
+
+.pushPrompt{margin:1rem 0 1.25rem;padding:1rem 1.15rem;text-align:left;border-left:3px solid #a38346;background:#f1eee0;color:#193e33}
+.pushPrompt strong{display:block;font-size:1rem}.pushPrompt p{margin:.4rem 0 .65rem;font-size:1rem;line-height:1.45}
+.pushPrompt p:last-child{margin-bottom:0}.pushPrompt .button{margin-top:.2rem}

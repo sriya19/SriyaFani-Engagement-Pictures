@@ -41,12 +41,12 @@ export async function identity(request, env, guestWeb = false) {
   const token = guestToken(request, "session", guestWeb);
   if (!/^[0-9a-f]{64}$/.test(token)) return { role: "visitor" };
   const guest = await env.DB.prepare(
-    "SELECT g.id, g.name, g.phone, g.status FROM sessions s JOIN guests g ON g.id=s.guest WHERE s.token=? AND s.expires>?",
+    "SELECT g.id, g.name, g.phone, g.status, g.phone_verified FROM sessions s JOIN guests g ON g.id=s.guest WHERE s.token=? AND s.expires>?",
   )
     .bind(await digest(token), Date.now())
     .first();
   if (!guest) return { role: "visitor" };
-  if (!guestWeb && env.OWNER_PHONE && guest.phone === env.OWNER_PHONE)
+  if (!guestWeb && guest.phone_verified === 1 && env.OWNER_PHONE && guest.phone === env.OWNER_PHONE)
     return { role: "host", id: guest.id };
   return {
     role: "guest",
@@ -55,7 +55,7 @@ export async function identity(request, env, guestWeb = false) {
     status: guest.status,
   };
 }
-async function throttle(db, tag, ttl, limit) {
+export async function throttle(db, tag, ttl, limit, message = "Please wait before requesting another code.") {
   const now = Date.now(),
     key = await digest("sf-v1:" + tag);
   const hit = await db
@@ -64,7 +64,7 @@ async function throttle(db, tag, ttl, limit) {
     )
     .bind(key, now + ttl, now, now, now, limit)
     .first();
-  if (!hit) fail(429, "Please wait before requesting another code.");
+  if (!hit) fail(429, message);
 }
 async function verifyCall(env, endpoint, data) {
   const url =
@@ -176,7 +176,7 @@ export async function notifyHost(env, guest, origin) {
       to: [env.HOST_EMAIL],
       subject: "New guest request for the Sriya & Fani album",
       text:
-        "A guest has verified their mobile number and requested access to your engagement album. Review their request in your host studio.\n\n" +
+        "A guest requested access to your engagement album. Review their request in your host studio.\n\n" +
         origin +
         "/host",
     }),
@@ -218,12 +218,12 @@ export async function finish(request, env, ctx, guestWeb) {
     fail(400, "Request a new verification code.");
   await db
     .prepare(
-      "INSERT INTO guests(id,phone,name,created) VALUES(?,?,?,?) ON CONFLICT(phone) DO NOTHING",
+      "INSERT INTO guests(id,phone,name,created) VALUES(?,?,?,?) ON CONFLICT(phone) WHERE phone_verified=1 DO NOTHING",
     )
     .bind(crypto.randomUUID(), ticket.phone, ticket.name, Date.now())
     .run();
   const guest = await db
-    .prepare("SELECT id,status,notified FROM guests WHERE phone=?")
+    .prepare("SELECT id,status,notified FROM guests WHERE phone=? AND phone_verified=1")
     .bind(ticket.phone)
     .first();
   const session = randomToken(),
@@ -249,10 +249,13 @@ export async function finish(request, env, ctx, guestWeb) {
 }
 export async function logout(request, env, guestWeb) {
   const session = guestToken(request, "session", guestWeb);
-  if (session)
-    await env.DB.prepare("DELETE FROM sessions WHERE token=?")
-      .bind(await digest(session))
-      .run();
+  if (session) {
+    const hash = await digest(session);
+    await env.DB.batch([
+      env.DB.prepare("DELETE FROM push_subscriptions WHERE owner IN (SELECT guest FROM sessions WHERE token=?)").bind(hash),
+      env.DB.prepare("DELETE FROM sessions WHERE token=?").bind(hash),
+    ]);
+  }
   if (guestWeb) return json({ ok: true });
   return json({ ok: true }, 200, {
     "Set-Cookie": cookie(request, "session", "", 0),

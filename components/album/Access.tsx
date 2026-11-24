@@ -1,6 +1,8 @@
 "use client";
 import { useEffect, useState } from "react";
 import { api, Icon, Lotus, Me, Message, say } from "./shared";
+import { requestTicket } from "./transport";
+import Notifications from "./Notifications";
 export default function Access({
   me,
   refresh,
@@ -24,13 +26,18 @@ export default function Access({
     return () => clearTimeout(t);
   }, [cool]);
   const fullPhone =
-    country === "other"
+    country === "other" || phone.trim().startsWith("+")
       ? "+" + phone.replace(/\D/g, "")
       : country + phone.replace(/\D/g, "");
   async function send() {
     setBusy(true);
     setMessage("");
     try {
+      if (!hostPage) {
+        await api("access/request", { name, phone: fullPhone, ticket: requestTicket() });
+        await refresh();
+        return;
+      }
       await api("otp/start", { name, phone: fullPhone });
       setSent(true);
       setCode("");
@@ -61,7 +68,7 @@ export default function Access({
           {hostPage
             ? "Host access"
             : me.status === "pending"
-              ? "Your number is verified"
+              ? "Your request is with Sriya and Fani"
               : "Album access"}
         </h2>
         <p>
@@ -70,9 +77,10 @@ export default function Access({
             : me.status === "pending"
               ? "Thank you, " +
                 (me.name || "friend") +
-                ". Your album will appear here when access is ready."
-              : "This number currently has no access to the album. Please contact Sriya or Fani."}
+                ". You can close this page. Open the same link in this browser to check your approval."
+              : "This request has no album access. Contact Sriya or Fani if you have a question."}
         </p>
+        {!hostPage && me.status === "pending" && <Notifications registered />}
         <div className="actions">
           <button
             className="button"
@@ -112,22 +120,12 @@ export default function Access({
         <Message value={message} />
       </div>
     );
-  if (me.smsEnabled === false)
+  if (hostPage && me.smsEnabled === false)
     return (
       <div className="formBox">
         <Lotus className="formLotus" />
-        <h2>Guest access opens soon</h2>
-        <p>Sriya and Fani are setting up text verification. Once it’s ready, you can enter your name and mobile number here to request access.</p>
-        <button className="button light" disabled={busy} onClick={async () => {
-          setBusy(true);
-          try {
-            if (!(await refresh()).smsEnabled) setMessage("Text verification is still being set up.");
-          } catch (e) {
-            setMessage(say(e));
-          } finally {
-            setBusy(false);
-          }
-        }}>Check again</button>
+        <h2>Host sign-in</h2>
+        <p>The standalone host needs a verified host sign-in method. Open the managed host studio to review album requests.</p>
         <Message value={message} />
       </div>
     );
@@ -140,15 +138,16 @@ export default function Access({
           ? "Check your messages"
           : hostPage
             ? "Host sign-in"
-            : "Open the album"}
+            : "Request album access"}
       </h2>
       <p>
         {sent
           ? "Enter the one-time code sent to " + fullPhone + "."
           : hostPage
             ? "Use your configured host mobile number to sign in."
-            : "Enter your name and mobile number. We’ll text you a one-time code."}
+            : "Enter your name and mobile number so Sriya or Fani can approve your request."}
       </p>
+      {!hostPage && <Notifications registered={false} />}
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -219,14 +218,12 @@ export default function Access({
         )}
         {!sent && (
           <p className="privacy">
-            By continuing, you agree to receive a verification text. The hosts
-            can see your access request, album favorites and original download
-            requests.
+            {hostPage ? "We’ll send a verification text to your configured host number." : "The hosts can see the name and number you submit, your favorites and your original photo download requests."}
           </p>
         )}
         <button className="button full" disabled={busy} type="submit">
           <Icon name="lock" />
-          {busy ? "Please wait…" : sent ? "Verify code" : "Text me a code"}
+          {busy ? "Please wait…" : sent ? "Verify code" : hostPage ? "Text me a code" : "Request access"}
         </button>
       </form>
       {sent && (

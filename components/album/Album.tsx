@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api, Icon, Kolam, Lotus, Me, Message, Modal, say } from "./shared";
 import Access from "./Access";
 import Gallery from "./Gallery";
@@ -15,7 +15,7 @@ export default function Album({ hostPage = false, switchHostAccount, homePath = 
     [opened, setOpened] = useState(false),
     [dialog, setDialog] = useState<"access" | "note" | "privacy" | null>(null),
     [note, setNote] = useState("");
-  async function refresh() {
+  const refresh = useCallback(async () => {
     const a = await api<Me>("me");
     setMe(a);
     setReady(true);
@@ -24,14 +24,14 @@ export default function Album({ hostPage = false, switchHostAccount, homePath = 
       setOpened(true);
     }
     return a;
-  }
+  }, []);
   useEffect(() => {
     api<Me>("me")
       .then((a) => {
         setMe(a);
         if (
           !hostPage &&
-          new URLSearchParams(location.search).get("album") === "1"
+          (new URLSearchParams(location.search).get("album") === "1" || a.role === "guest")
         ) {
           if (a.role === "host" || a.status === "approved") setOpened(true);
           else setDialog("access");
@@ -40,6 +40,26 @@ export default function Album({ hostPage = false, switchHostAccount, homePath = 
       .catch((e) => setNote(say(e)))
       .finally(() => setReady(true));
   }, []);
+  useEffect(() => {
+    if (hostPage || me.status !== "pending") return;
+    let active = true;
+    async function check() {
+      if (document.visibilityState !== "visible") return;
+      try {
+        const a = await api<Me>("me");
+        if (!active || a.status === "pending") return;
+        setMe(a);
+        if (a.status === "approved") {
+          setDialog(null); setOpened(true);
+          setNote("Your request was approved. Welcome to the album!");
+        }
+      } catch { /* Another check runs when the browser regains focus. */ }
+    }
+    const timer = window.setInterval(check, 10000);
+    document.addEventListener("visibilitychange", check);
+    window.addEventListener("focus", check);
+    return () => { active=false; clearInterval(timer); document.removeEventListener("visibilitychange",check); window.removeEventListener("focus",check); };
+  }, [hostPage, me.status]);
   function enter() {
     if (me.role === "host" || me.status === "approved") {
       setOpened(true);
@@ -227,7 +247,7 @@ export default function Album({ hostPage = false, switchHostAccount, homePath = 
               <Icon name="lock" />
               <h2>Album privacy</h2>
               <p>
-                We use your name and verified mobile number to manage access.
+                We use the name and mobile number you submit to review your request. Access belongs to the browser you used to request it.
                 The hosts can see which photos you favorite or request to
                 download, along with the time.
               </p>

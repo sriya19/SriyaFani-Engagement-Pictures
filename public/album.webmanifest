@@ -1,0 +1,5 @@
+{
+  "name": "Sriya & Fani Engagement Album", "short_name": "Sriya & Fani", "id": "./", "start_url": "./?album=1", "scope": "./",
+  "display": "standalone", "theme_color": "#193e33", "background_color": "#faf7ee",
+  "icons": [{"src":"lotus-192.png","sizes":"192x192","type":"image/png"},{"src":"lotus-512.png","sizes":"512x512","type":"image/png"}]
+}

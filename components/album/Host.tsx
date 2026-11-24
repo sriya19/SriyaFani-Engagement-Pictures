@@ -12,6 +12,7 @@ import {
   size,
   when,
 } from "./shared";
+import Notifications from "./Notifications";
 import { DrivePicker, Setup, Upload } from "./Import";
 type Guest = {
   id: string;
@@ -42,6 +43,7 @@ export default function Host() {
     [next, setNext] = useState<number | null>(null),
     [busy, setBusy] = useState(false),
     [note, setNote] = useState("");
+  const [pending, setPending] = useState(0);
   const [totals, setTotals] = useState({ total: 0, published: 0 });
   const outstanding = useRef(new Set<string>());
   const [changing, setChanging] = useState<Set<string>>(new Set());
@@ -67,6 +69,30 @@ export default function Host() {
     }
   }
   useEffect(() => {
+    if (new URLSearchParams(location.search).get("tab") === "guests") setTab("guests");
+  }, []);
+  useEffect(() => {
+    let active = true;
+    async function check() {
+      if (document.visibilityState !== "visible") return;
+      try {
+        const n = await api<{pending:number}>("host/requests-count");
+        if (!active) return;
+        setPending(n.pending);
+        if (tab === "guests") {
+          const page = await api<Page<Guest>>("host/guests");
+          if (active) {
+            setGuests(current => [...page.items, ...current.slice(60).filter(g => !page.items.some(item => item.id === g.id))]);
+          }
+        }
+      } catch { /* The manual refresh remains available. */ }
+    }
+    void check();
+    const timer = window.setInterval(check, 15000);
+    window.addEventListener("focus", check);
+    return () => { active=false; clearInterval(timer); window.removeEventListener("focus",check); };
+  }, [tab]);
+  useEffect(() => {
     api<Setup>("host/status")
       .then(setSetup)
       .catch((e) => setNote(say(e)));
@@ -83,6 +109,7 @@ export default function Host() {
     try {
       await api("host/" + endpoint, data);
       await load();
+      if (endpoint === "guest") setPending((await api<{pending:number}>("host/requests-count")).pending);
     } catch (e) {
       setNote(say(e));
       setBusy(false);
@@ -113,7 +140,7 @@ export default function Host() {
         {[
           ["photos", "Photos"],
           ["import", "Add photos"],
-          ["guests", "Guest requests"],
+          ["guests", pending ? "Guest requests (" + pending + ")" : "Guest requests"],
           ["activity", "Activity"],
         ].map(([v, t]) => (
           <button
@@ -127,11 +154,15 @@ export default function Host() {
           </button>
         ))}
       </div>
+      {pending > 0 && tab !== "guests" && <p role="status" className="message">
+        {pending === 1 ? "One guest is waiting for approval." : pending + " guests are waiting for approval."}{" "}
+        <button type="button" className="textButton" onClick={() => setTab("guests")}>Review requests</button>
+      </p>}
       <Message value={note} />
       {setup && (
         <div hidden={tab !== "import"}>
           <div className="setupLine">
-            <span>SMS {setup.sms ? "connected" : "awaiting setup"}</span>
+
             <span>
               Drive {setup.drive ? "connected" : "awaiting credentials"}
             </span>
@@ -191,12 +222,7 @@ export default function Host() {
       )}
       {tab === "guests" && (
         <>
-          {setup && !setup.sms && (
-            <div className="message">
-              <strong>Connect SMS to open guest access.</strong>
-              <p>Create a Twilio Verify service with SMS enabled. In the site’s hosting secrets, set <code>TWILIO_ACCOUNT_SID</code>, <code>TWILIO_AUTH_TOKEN</code> and <code>TWILIO_VERIFY_SERVICE_SID</code>, then publish the settings.</p>
-            </div>
-          )}
+          <Notifications host registered />
           {guests.length ? (
             <div className="records">
               {guests.map((g) => (
@@ -251,8 +277,7 @@ export default function Host() {
               <div className="empty">
                 <h3>No guest requests yet</h3>
                 <p>
-                  New requests appear here after guests verify their mobile
-                  numbers.
+                  New requests appear here when guests submit their name and mobile number.
                 </p>
               </div>
             )
