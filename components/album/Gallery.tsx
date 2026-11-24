@@ -240,7 +240,8 @@ export default function Gallery({ me }: { me: Me }) {
   );
 }
 
-type Video = { id: string; title?: string; vertical?: boolean; link?: string };
+type Video = { id: string; title?: string; vertical?: boolean; link?: string; src?: string; poster?: string };
+const siteFile = (path?: string) => (path && /^videos\/[\w.-]+\.(mp4|jpg)$/.test(path) ? import.meta.env.BASE_URL + path : undefined);
 // Videos live in the hosts' Google Drive folder "Sriya & Fani · Album Videos".
 // public/videos.json lists the Drive file IDs to show, newest first.
 function VideosView({ server }: { server: boolean }) {
@@ -255,7 +256,10 @@ function VideosView({ server }: { server: boolean }) {
       : Promise.resolve([] as Video[]);
     const drive = fetch(import.meta.env.BASE_URL + "videos.json", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : []))
-      .then((data: Video[]) => Array.isArray(data) ? data.filter((v) => /^[\w-]{10,}$/.test(v?.id || "")) : [])
+      .then((data: Video[]) => Array.isArray(data)
+        ? data.map((v) => ({ ...v, link: siteFile(v?.src), poster: siteFile(v?.poster), id: v?.id || v?.src || "" }))
+            .filter((v) => v.link || /^[\w-]{10,}$/.test(v.id))
+        : [])
       .catch(() => [] as Video[]);
     Promise.all([uploaded, drive]).then(([a, b]) => { if (live) setList([...a, ...b]); });
     return () => { live = false; };
@@ -270,7 +274,7 @@ function VideosView({ server }: { server: boolean }) {
             <figure className={"videoCard" + (v.vertical ? " vertical" : "")} key={v.id}>
               <div className="videoFrame">
                 {v.link ? (
-                  <video src={v.link} controls preload="metadata" playsInline />
+                  <video src={v.link} poster={v.poster} controls preload="metadata" playsInline />
                 ) : (
                 <iframe
                   src={"https://drive.google.com/file/d/" + v.id + "/preview"}

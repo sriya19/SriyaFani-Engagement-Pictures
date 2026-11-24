@@ -66,4 +66,6 @@ Upload videos to the Google Drive folder **Sriya & Fani · Album Videos** (share
 ]
 ```
 
+Videos can also be stored with the guest site itself: put a web-ready MP4 (H.264/AAC, under 100 MB) and an optional JPEG cover in `videos/` on the `gh-pages` branch and list them as `{ "src": "videos/name.mp4", "poster": "videos/name.jpg", "title": "…" }`.
+
 The file ID is the part of the Drive link between `/d/` and `/view`. Use `"vertical": true` for phone-shot portrait videos. On the published guest site you can also edit `videos.json` directly on the `gh-pages` branch; the Videos tab reads it on every visit.
