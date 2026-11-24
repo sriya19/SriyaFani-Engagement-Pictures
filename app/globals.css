@@ -972,3 +972,5 @@ body > main {
 .noteCard footer{display:flex;align-items:flex-end;justify-content:space-between;gap:.8rem;border-top:1px solid var(--line);padding-top:.7rem}
 .noteCard footer span{display:grid}
 .noteCard small{color:var(--muted);font-size:.84rem}
+.albumNote{display:flex;align-items:center;gap:.7rem;margin:0 0 1rem;padding:.75rem 1rem;border-left:3px solid var(--gold);background:#f1ebd9;color:var(--ink);font:500 1.2rem/1.35 var(--serif)}
+.albumNote svg{width:30px;height:24px;flex:none;color:var(--gold)}

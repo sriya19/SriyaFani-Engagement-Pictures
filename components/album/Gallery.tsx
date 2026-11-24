@@ -157,6 +157,12 @@ export default function Gallery({ me }: { me: Me }) {
           </button>
         )}
       </div>
+      {!saved && (
+        <p className="albumNote">
+          <Lotus />
+          <span>These are just the candids. More pictures will be added soon!</span>
+        </p>
+      )}
       {visible.length > 0 && (
         <p className="galleryHint">
           Tap any photo to see it full screen, then swipe to browse.
