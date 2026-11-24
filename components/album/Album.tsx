@@ -15,16 +15,41 @@ export default function Album({ hostPage = false, switchHostAccount, homePath = 
     [opened, setOpened] = useState(false),
     [dialog, setDialog] = useState<"access" | "note" | null>(null),
     [note, setNote] = useState("");
+  // Opening the album adds a history step, so the phone's back button
+  // returns to the invitation instead of leaving the site.
+  const openAlbum = useCallback(() => {
+    setOpened(true);
+    if (hostPage) return;
+    try {
+      if (!(history.state as { sfAlbum?: boolean } | null)?.sfAlbum)
+        history.pushState({ ...(history.state || {}), sfAlbum: true }, "");
+    } catch { /* The Invitation link still returns home. */ }
+  }, [hostPage]);
+  useEffect(() => {
+    if (hostPage) return;
+    try {
+      const { sfAlbum, sfViewer, ...rest } = (history.state || {}) as Record<string, unknown>;
+      if (sfAlbum || sfViewer) history.replaceState(rest, "");
+    } catch { /* Nothing to tidy. */ }
+    const onPop = () => {
+      if (!(history.state as { sfAlbum?: boolean } | null)?.sfAlbum) {
+        setOpened(false);
+        window.scrollTo(0, 0);
+      }
+    };
+    addEventListener("popstate", onPop);
+    return () => removeEventListener("popstate", onPop);
+  }, [hostPage]);
   const refresh = useCallback(async () => {
     const a = await api<Me>("me");
     setMe(a);
     setReady(true);
     if (a.role === "host" || a.status === "approved") {
       setDialog(null);
-      setOpened(true);
+      openAlbum();
     }
     return a;
-  }, []);
+  }, [openAlbum]);
   useEffect(() => {
     api<Me>("me")
       .then((a) => {
@@ -33,8 +58,8 @@ export default function Album({ hostPage = false, switchHostAccount, homePath = 
           !hostPage &&
           (new URLSearchParams(location.search).get("album") === "1" || a.role === "guest")
         ) {
-          if (a.role === "host" || a.status === "approved") setOpened(true);
-          else setDialog("access");
+          // Approved guests start on the invitation and open the album from there.
+          if (a.role !== "host" && a.status !== "approved") setDialog("access");
         }
       })
       .catch((e) => setNote(say(e)))
@@ -50,7 +75,7 @@ export default function Album({ hostPage = false, switchHostAccount, homePath = 
         if (!active || a.status === "pending") return;
         setMe(a);
         if (a.status === "approved") {
-          setDialog(null); setOpened(true);
+          setDialog(null); openAlbum();
           setNote("Your request was approved. Welcome to the album!");
         }
       } catch { /* Another check runs when the browser regains focus. */ }
@@ -59,10 +84,10 @@ export default function Album({ hostPage = false, switchHostAccount, homePath = 
     document.addEventListener("visibilitychange", check);
     window.addEventListener("focus", check);
     return () => { active=false; clearInterval(timer); document.removeEventListener("visibilitychange",check); window.removeEventListener("focus",check); };
-  }, [hostPage, me.status]);
+  }, [hostPage, me.status, openAlbum]);
   function enter() {
     if (me.role === "host" || me.status === "approved") {
-      setOpened(true);
+      openAlbum();
       setDialog(null);
     } else setDialog("access");
   }
