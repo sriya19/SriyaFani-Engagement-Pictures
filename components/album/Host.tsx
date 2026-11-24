@@ -39,6 +39,7 @@ export default function Host() {
     [setup, setSetup] = useState<Setup | null>(null),
     [photos, setPhotos] = useState<Photo[]>([]),
     [guests, setGuests] = useState<Guest[]>([]),
+    [confirmDelete, setConfirmDelete] = useState(""),
     [events, setEvents] = useState<EventRow[]>([]),
     [next, setNext] = useState<number | null>(null),
     [busy, setBusy] = useState(false),
@@ -109,7 +110,7 @@ export default function Host() {
     try {
       await api("host/" + endpoint, data);
       await load();
-      if (endpoint === "guest") setPending((await api<{pending:number}>("host/requests-count")).pending);
+      if (endpoint.startsWith("guest")) setPending((await api<{pending:number}>("host/requests-count")).pending);
     } catch (e) {
       setNote(say(e));
       setBusy(false);
@@ -266,6 +267,20 @@ export default function Host() {
                         }
                       >
                         Revoke access
+                      </button>
+                    )}
+                    {g.status !== "approved" && (
+                      <button
+                        className="textButton deleteGuest"
+                        disabled={busy}
+                        onClick={() => {
+                          if (confirmDelete !== g.id) return setConfirmDelete(g.id);
+                          setConfirmDelete("");
+                          void change("guest/delete", { id: g.id });
+                        }}
+                        onBlur={() => setConfirmDelete((c) => (c === g.id ? "" : c))}
+                      >
+                        {confirmDelete === g.id ? "Tap again to delete" : "Delete"}
                       </button>
                     )}
                   </div>

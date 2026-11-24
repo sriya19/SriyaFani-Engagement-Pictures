@@ -90,5 +90,19 @@ test("manual requests are independent per browser and approvals deliver private 
     assert.equal((await (await api("host/requests-count",{headers:admin,host:true})).json()).pending,1);
     await api("host/guest",{...approve,data:{id:guest.id,status:"revoked"}}); await settle();
     assert.equal((await api("photos",{headers})).status,403);
+    const remove={data:{id:guest.id},headers:admin,host:true};
+    assert.equal((await api("host/guest/delete",{...remove,headers:{}})).status,403);
+    await api("host/guest",approve); await settle();
+    assert.equal((await api("host/guest/delete",remove)).status,409);
+    await api("host/guest",{...approve,data:{id:guest.id,status:"revoked"}}); await settle();
+    sql.prepare("INSERT INTO photos(id,name,mime,bytes,created) VALUES('p','a.jpg','image/jpeg',1,1)").run();
+    sql.prepare("INSERT INTO activity(guest,photo,action,created) VALUES(?,?,?,?)").run(guest.id,"p","download",1);
+    sql.prepare("INSERT INTO favorites(guest,photo) VALUES(?,?)").run(guest.id,"p");
+    assert.equal((await api("host/guest/delete",remove)).status,200);
+    for (const [table,column] of [["guests","id"],["sessions","guest"],["activity","guest"],["favorites","guest"],["push_subscriptions","owner"]])
+      assert.equal(sql.prepare(`SELECT count(*) AS n FROM ${table} WHERE ${column}=?`).get(guest.id).n,0,table);
+    assert.equal(sql.prepare("SELECT count(*) AS n FROM guests").get().n,1);
+    assert.equal((await api("photos",{headers})).status,403);
+    assert.equal((await api("host/guest/delete",remove)).status,404);
   } finally {await settle();globalThis.fetch=oldFetch;sql.close();}
 });

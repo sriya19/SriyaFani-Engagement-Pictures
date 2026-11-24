@@ -180,6 +180,23 @@ async function handle(request, env, ctx, guestWeb) {
       if (input.status === "approved") ctx.waitUntil(deliverPush(env).catch(() => {}));
       return json({ ok: true });
     }
+    if (path === "/host/guest/delete" && method === "POST") {
+      const { id } = await body(request);
+      if (typeof id !== "string") fail(400, "Choose a guest.");
+      const guest = await db.prepare("SELECT status FROM guests WHERE id=? AND (phone_verified=0 OR phone<>?)")
+        .bind(id, env.OWNER_PHONE || "").first();
+      if (!guest) fail(404, "Guest unavailable.");
+      if (guest.status === "approved") fail(409, "Revoke this guest's access before deleting them.");
+      // Remove the request together with everything recorded for it.
+      await db.batch([
+        db.prepare("DELETE FROM sessions WHERE guest=?").bind(id),
+        db.prepare("DELETE FROM favorites WHERE guest=?").bind(id),
+        db.prepare("DELETE FROM activity WHERE guest=?").bind(id),
+        db.prepare("DELETE FROM push_subscriptions WHERE owner=?").bind(id),
+        db.prepare("DELETE FROM guests WHERE id=?").bind(id),
+      ]);
+      return json({ ok: true });
+    }
     if (path === "/host/activity" && method === "GET")
       return json(
         await paginate(

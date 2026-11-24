@@ -953,3 +953,4 @@ body > main {
   .viewerActions .button{width:100%;justify-content:center;gap:.4rem;padding:.6rem .5rem;font-size:.95rem;white-space:nowrap}
   .viewerActions .button svg{width:18px;height:18px;flex:none}
 }
+.deleteGuest{color:#9a3f3f}
