@@ -277,47 +277,60 @@ function GuestDownload({ photo }: { photo: Photo }) {
     <Message value={error} />
   </>;
 }
-function GuestPreview({ photo }: { photo: Photo }) {
+// Previews are shared by the grid and the full-screen viewer, so a photo that
+// is already on screen opens instantly instead of downloading a second time.
+const previewRequests = new Map<string, Promise<string>>();
+const previewUrls = new Map<string, string>();
+function loadPreview(photo: Photo) {
+  let pending = previewRequests.get(photo.id);
+  if (!pending) {
+    pending = mediaBlob(photo, "preview", new AbortController().signal).then((blob) => {
+      const url = URL.createObjectURL(blob);
+      previewUrls.set(photo.id, url);
+      return url;
+    });
+    previewRequests.set(photo.id, pending);
+    pending.catch(() => previewRequests.delete(photo.id));
+  }
+  return pending;
+}
+function GuestPreview({ photo, eager }: { photo: Photo; eager: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
-  const [url, setUrl] = useState("");
+  const [url, setUrl] = useState(() => previewUrls.get(photo.id) || "");
   const [error, setError] = useState(false);
   useEffect(() => {
-    const controller = new AbortController();
-    let objectUrl = "";
-    async function load() {
-      try {
-        const blob = await mediaBlob(photo, "preview", controller.signal);
-        if (controller.signal.aborted) return;
-        objectUrl = URL.createObjectURL(blob);
-        setUrl(objectUrl);
-      } catch {
-        if (!controller.signal.aborted) setError(true);
-      }
-    }
+    if (url) return;
+    let live = true;
+    const load = () =>
+      loadPreview(photo).then(
+        (value) => { if (live) setUrl(value); },
+        () => { if (live) setError(true); },
+      );
     let observer: IntersectionObserver | undefined;
-    if (ref.current && typeof IntersectionObserver !== "undefined") {
+    if (!eager && ref.current && typeof IntersectionObserver !== "undefined") {
       observer = new IntersectionObserver((entries) => {
         if (entries.some((entry) => entry.isIntersecting)) {
           observer?.disconnect();
           void load();
         }
-      }, { rootMargin: "250px" });
+      }, { rootMargin: "400px" });
       observer.observe(ref.current);
     } else void load();
     return () => {
-      controller.abort();
+      live = false;
       observer?.disconnect();
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [photo.id]);
-  return url ? <img src={url} alt={photo.name} /> :
+  }, [photo.id, eager, url]);
+  return url ? <img src={url} alt={photo.name} decoding="async" draggable={false} /> :
     <div ref={ref} className="noPreview"><Icon name="photo" /><span>{error ? "Preview unavailable" : "Loading photo…"}</span></div>;
 }
-export function Cover({ photo }: { photo: Photo }) {
-  if (photo.preview && isGuestWebsite()) return <GuestPreview key={photo.id} photo={photo} />;
+export function Cover({ photo, eager = false }: { photo: Photo; eager?: boolean }) {
+  if (photo.preview && isGuestWebsite()) return <GuestPreview key={photo.id} photo={photo} eager={eager} />;
   return photo.preview ? (
     <img
-      loading="lazy"
+      loading={eager ? "eager" : "lazy"}
+      decoding="async"
+      draggable={false}
       src={"/api/photos/" + photo.id + "/preview"}
       alt={photo.name}
     />
