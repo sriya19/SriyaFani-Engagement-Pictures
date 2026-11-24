@@ -13,7 +13,7 @@ await build({
       return [{
         tag: "meta", injectTo: "head-prepend",
         attrs: { "http-equiv": "Content-Security-Policy", content:
-          "default-src 'self'; script-src 'self'; style-src 'self'; connect-src " + apiOrigin +
+          "default-src 'self'; script-src 'self'; style-src 'self'; connect-src " + apiOrigin + " https://docs.google.com" +
           "; img-src 'self' blob:; font-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'" },
       }];
     },

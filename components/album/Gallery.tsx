@@ -15,6 +15,14 @@ import {
 } from "./shared";
 
 const VIEWER_STATE = "sfViewer";
+// Guest notes are delivered privately to the hosts' Google Form
+// ("A note for Sriya & Fani"); only the form owner can read responses.
+const NOTE_FORM = {
+  action:
+    "https://docs.google.com/forms/d/e/1FAIpQLSdQIeECOruAD0LZMl4OoGqB4x7wVZUBFoLiHjOtAtLuD8iDCA/formResponse",
+  name: "entry.1541100485",
+  text: "entry.407667846",
+};
 const viewerInHistory = () =>
   Boolean((history.state as Record<string, unknown> | null)?.[VIEWER_STATE]);
 
@@ -200,8 +208,8 @@ export default function Gallery({ me }: { me: Me }) {
       </div>
       <div ref={sentinel} className="sentinel" aria-hidden="true" />
       {loading && <p role="status">Loading…</p>}
-      {guest && me.messages && !saved && !loading && next === null && visible.length > 0 && (
-        <GuestNote />
+      {guest && !saved && !loading && next === null && visible.length > 0 && (
+        <GuestNote me={me} />
       )}
       {next !== null && !loading && (
         <button className="button light moreButton" onClick={more}>
@@ -226,8 +234,9 @@ export default function Gallery({ me }: { me: Me }) {
   );
 }
 
-function GuestNote() {
-  const [text, setText] = useState(""),
+function GuestNote({ me }: { me: Me }) {
+  const [name, setName] = useState(me.name || ""),
+    [text, setText] = useState(""),
     [busy, setBusy] = useState(false),
     [sent, setSent] = useState(false),
     [error, setError] = useState("");
@@ -237,7 +246,13 @@ function GuestNote() {
     setBusy(true);
     setError("");
     try {
-      await api("messages", { text });
+      const form = new URLSearchParams();
+      form.set(NOTE_FORM.name, name.trim());
+      form.set(NOTE_FORM.text, text.trim());
+      // Google Forms doesn't allow reading the reply from another site,
+      // so a completed request is treated as delivered.
+      await fetch(NOTE_FORM.action, { method: "POST", mode: "no-cors", body: form, referrerPolicy: "no-referrer" })
+        .catch(() => { throw new Error("Your note couldn't be sent. Please check your connection and try again."); });
       setText("");
       setSent(true);
     } catch (err) {
@@ -261,6 +276,16 @@ function GuestNote() {
       ) : (
         <form onSubmit={send}>
           <p>A wish, a memory or a few sweet words. Only Sriya &amp; Fani will read it.</p>
+          <label className="srOnly" htmlFor="guest-note-name">Your name</label>
+          <input
+            id="guest-note-name"
+            className="noteName"
+            maxLength={80}
+            placeholder="Your name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            disabled={busy}
+          />
           <label className="srOnly" htmlFor="guest-note-text">Your note</label>
           <textarea
             id="guest-note-text"
