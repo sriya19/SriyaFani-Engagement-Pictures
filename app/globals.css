@@ -983,3 +983,17 @@ body > main {
 .videoFrame iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
 .videoCard figcaption{padding:.75rem 1rem;font:500 1.2rem/1.3 var(--serif)}
 @media (max-width:620px){.videoList{margin-inline:-19px;gap:.9rem}.videoCard{border-inline:0}}
+.videoFrame video{position:absolute;inset:0;width:100%;height:100%;background:#0c1b17;object-fit:contain}
+.videoFrame .noPreview{position:absolute;inset:0;background:#1d2b26;color:#cfc8b2}
+.videoUpload .button{cursor:pointer}
+.disabledLabel{opacity:.6;pointer-events:none}
+.uploadList{list-style:none;padding:0;margin:1rem 0 0;display:grid;gap:.6rem}
+.uploadList li{display:grid;gap:.2rem}
+.uploadList span{font-weight:600;font-size:.92rem;overflow-wrap:anywhere}
+.uploadList progress{width:100%;height:8px;accent-color:var(--pine)}
+.uploadList small{color:var(--muted)}
+.hostVideoMeta{display:grid;gap:.25rem}
+.hostVideoMeta small{color:var(--muted);font:400 .84rem var(--sans)}
+.hostVideoMeta .actions{margin-top:.4rem;display:flex;flex-wrap:wrap;gap:.6rem;align-items:center}
+.titleEdit{display:flex;gap:.5rem;align-items:center}
+.titleEdit input{flex:1;min-width:0;height:38px;padding:.3rem .6rem;border:1px solid #b5b49d;border-radius:4px;font:500 1.05rem var(--serif)}

@@ -125,14 +125,14 @@ test("verified approval gates previews and original bytes, and favorites and dow
   try {
     assert.equal((await call("photos")).status, 403);
     assert.equal((await call("host/guests")).status, 403);
-    assert.deepEqual(await decode(await call("me")), { role: "visitor", smsEnabled: false, messages: true });
+    assert.deepEqual(await decode(await call("me")), { role: "visitor", smsEnabled: false, messages: true, videos: true });
     assert.equal((await call("otp/start", { data: guestInput })).status, 503);
     Object.assign(env, {
       TWILIO_ACCOUNT_SID: "test",
       TWILIO_AUTH_TOKEN: "fixture",
       TWILIO_VERIFY_SERVICE_SID: "fixture",
     });
-    assert.deepEqual(await decode(await call("me")), { role: "visitor", smsEnabled: true, messages: true });
+    assert.deepEqual(await decode(await call("me")), { role: "visitor", smsEnabled: true, messages: true, videos: true });
     globalThis.fetch = async (url, init) => {
       if (String(url).endsWith("/Verifications")) {
         assert.equal(init.body.get("To"), phone);

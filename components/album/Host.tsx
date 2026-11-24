@@ -13,6 +13,7 @@ import {
   when,
 } from "./shared";
 import Notifications from "./Notifications";
+import HostVideos from "./HostVideos";
 import { DrivePicker, Setup, Upload } from "./Import";
 type Guest = {
   id: string;
@@ -109,7 +110,7 @@ export default function Host() {
       .catch((e) => setNote(say(e)));
   }, []);
   useEffect(() => {
-    if (tab !== "import") void load(tab);
+    if (tab !== "import" && tab !== "videos") void load(tab);
     else {
       setNext(null);
       setNote("");
@@ -150,6 +151,7 @@ export default function Host() {
       <div className="tabs">
         {[
           ["photos", "Photos"],
+          ["videos", "Videos"],
           ["import", "Add photos"],
           ["guests", pending ? "Guest requests (" + pending + ")" : "Guest requests"],
           ["messages", "Messages"],
@@ -380,7 +382,8 @@ export default function Host() {
           )}
         </>
       )}
-      {tab !== "import" && (
+      {tab === "videos" && <HostVideos />}
+      {tab !== "import" && tab !== "videos" && (
         <div className="actions">
           <button type="button" className="textButton" disabled={busy || changing.size > 0} onClick={() => load()}>
             {busy ? "Loading…" : "Refresh"}

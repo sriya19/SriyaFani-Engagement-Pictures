@@ -28,11 +28,23 @@ import {
 import { privateHeaders } from "./common.js";
 import { requestAccess } from "./requests.js";
 import { deliverPush, pushPublicKey, queuePush, subscribePush } from "./push.js";
+import {
+  deleteVideo,
+  finishVideo,
+  guestVideos,
+  hostVideos,
+  startVideo,
+  streamVideo,
+  updateVideo,
+  uploadVideoPart,
+} from "./videos.js";
 const uuid = "[a-f0-9-]{36}";
 const photoRoute = new RegExp(
   "^/photos/(" + uuid + ")/(preview|original|favorite)$",
 );
 const thumbUpload = new RegExp("^/host/preview/(" + uuid + ")$");
+const videoStream = new RegExp("^/videos/(" + uuid + ")/stream$");
+const hostVideo = new RegExp("^/host/videos/(" + uuid + ")/(part|finish|update|delete)$");
 const take = 60;
 function offset(url) {
   return Math.min(
@@ -53,6 +65,9 @@ async function handle(request, env, ctx, guestWeb) {
     path = url.pathname.slice(guestWeb ? "/api/guest".length : "/api".length),
     method = request.method;
   if (method !== "GET" && method !== "POST") fail(405, "Method unavailable.");
+  // Signed links let a <video> element stream without the guest's token.
+  const stream = !guestWeb && method === "GET" && path.match(videoStream);
+  if (stream) return streamVideo(request, env, stream[1]);
   if (method === "POST" && !guestWeb) sameOrigin(request);
   if (guestWeb && path.startsWith("/host/")) fail(403, "Guest access only.");
   const db = env.DB;
@@ -61,7 +76,7 @@ async function handle(request, env, ctx, guestWeb) {
   if (path === "/me" && method === "GET") {
     const a = await identity(request, env, guestWeb);
     if (a.status === "pending" && env.WEB_PUSH_PRIVATE_JWK) ctx.waitUntil(deliverPush(env).catch(() => {}));
-    return json({ role: a.role, status: a.status, name: a.name, smsEnabled: smsReady(env), messages: true });
+    return json({ role: a.role, status: a.status, name: a.name, smsEnabled: smsReady(env), messages: true, videos: true });
   }
   if (path === "/otp/start" && method === "POST") return start(request, env, guestWeb);
   if (path === "/otp/check" && method === "POST")
@@ -199,6 +214,15 @@ async function handle(request, env, ctx, guestWeb) {
       ]);
       return json({ ok: true });
     }
+    if (path === "/host/videos" && method === "GET") return hostVideos(env, url.origin);
+    if (path === "/host/videos/start" && method === "POST") return startVideo(request, env);
+    const hv = path.match(hostVideo);
+    if (hv && method === "POST") {
+      if (hv[2] === "part") return uploadVideoPart(request, env, hv[1]);
+      if (hv[2] === "finish") return finishVideo(request, env, hv[1]);
+      if (hv[2] === "update") return updateVideo(request, env, hv[1]);
+      return deleteVideo(env, hv[1]);
+    }
     if (path === "/host/messages" && method === "GET")
       return json(
         await paginate(
@@ -256,6 +280,7 @@ async function handle(request, env, ctx, guestWeb) {
       ),
     );
   }
+  if (path === "/videos" && method === "GET") return guestVideos(env, url.origin);
   // Notes from approved guests. Only the hosts can read them.
   if (path === "/messages" && method === "POST") {
     if (actor.role !== "guest") fail(403, "Only guests can leave a note.");

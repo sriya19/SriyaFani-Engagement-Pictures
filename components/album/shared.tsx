@@ -7,6 +7,7 @@ export type Me = {
   name?: string;
   smsEnabled?: boolean;
   messages?: boolean;
+  videos?: boolean;
 };
 export type Photo = {
   id: string;

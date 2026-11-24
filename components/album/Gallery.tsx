@@ -169,7 +169,7 @@ export default function Gallery({ me }: { me: Me }) {
           </button>
         )}
       </div>
-      {videos ? <VideosView /> : <>
+      {videos ? <VideosView server={Boolean(me.videos)} /> : <>
       {!saved && (
         <p className="albumNote">
           <Lotus />
@@ -240,22 +240,26 @@ export default function Gallery({ me }: { me: Me }) {
   );
 }
 
-type Video = { id: string; title?: string; vertical?: boolean };
+type Video = { id: string; title?: string; vertical?: boolean; link?: string };
 // Videos live in the hosts' Google Drive folder "Sriya & Fani · Album Videos".
 // public/videos.json lists the Drive file IDs to show, newest first.
-function VideosView() {
+function VideosView({ server }: { server: boolean }) {
   const [list, setList] = useState<Video[] | null>(null),
     [error, setError] = useState("");
   useEffect(() => {
     let live = true;
-    fetch(import.meta.env.BASE_URL + "videos.json", { cache: "no-store" })
+    // Videos uploaded in the host studio come from the album server; any
+    // listed in videos.json are Google Drive videos.
+    const uploaded = server
+      ? api<{ items: Video[] }>("videos").then((r) => r.items).catch((e) => { if (live) setError(say(e)); return [] as Video[]; })
+      : Promise.resolve([] as Video[]);
+    const drive = fetch(import.meta.env.BASE_URL + "videos.json", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : []))
-      .then((data: Video[]) => {
-        if (live) setList(Array.isArray(data) ? data.filter((v) => /^[\w-]{10,}$/.test(v?.id || "")) : []);
-      })
-      .catch(() => live && (setError("Videos couldn’t load. Please try again."), setList([])));
+      .then((data: Video[]) => Array.isArray(data) ? data.filter((v) => /^[\w-]{10,}$/.test(v?.id || "")) : [])
+      .catch(() => [] as Video[]);
+    Promise.all([uploaded, drive]).then(([a, b]) => { if (live) setList([...a, ...b]); });
     return () => { live = false; };
-  }, []);
+  }, [server]);
   if (!list) return <p role="status">Loading videos…</p>;
   return (
     <>
@@ -265,6 +269,9 @@ function VideosView() {
           {list.map((v) => (
             <figure className={"videoCard" + (v.vertical ? " vertical" : "")} key={v.id}>
               <div className="videoFrame">
+                {v.link ? (
+                  <video src={v.link} controls preload="metadata" playsInline />
+                ) : (
                 <iframe
                   src={"https://drive.google.com/file/d/" + v.id + "/preview"}
                   title={v.title || "Engagement video"}
@@ -273,6 +280,7 @@ function VideosView() {
                   allowFullScreen
                   referrerPolicy="no-referrer"
                 />
+                )}
               </div>
               {v.title && <figcaption>{v.title}</figcaption>}
             </figure>
