@@ -1,5 +1,6 @@
 "use client";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { acceptGuestResponse, albumFetch, isGuestWebsite } from "./transport";
 export type Me = {
   role: "visitor" | "guest" | "host";
   status?: string;
@@ -16,10 +17,8 @@ export type Photo = {
 };
 export type Page<T> = { items: T[]; next: number | null };
 export async function api<T = any>(url: string, data?: unknown): Promise<T> {
-  const r = await fetch("/api/" + url, {
+  const r = await albumFetch(url, {
     method: data === undefined ? "GET" : "POST",
-    credentials: "same-origin",
-    cache: "no-store",
     ...(data === undefined
       ? {}
       : {
@@ -27,8 +26,11 @@ export async function api<T = any>(url: string, data?: unknown): Promise<T> {
           body: JSON.stringify(data),
         }),
   });
-  const result = (await r.json().catch(() => ({}))) as T & { error?: string };
+  if (!r.headers.get("Content-Type")?.includes("application/json"))
+    throw new Error("The album is temporarily unavailable. Please try again.");
+  const result = (await r.json().catch(() => ({}))) as T & { error?: string; challenge?: string; session?: string };
   if (!r.ok) throw new Error(result.error || "Please try again.");
+  acceptGuestResponse(url, result);
   return result;
 }
 export function say(e: unknown) {
@@ -227,6 +229,7 @@ export function Message({ value }: { value: string }) {
   ) : null;
 }
 export function Download({ photo }: { photo: Photo }) {
+  if (isGuestWebsite()) return <GuestDownload key={photo.id} photo={photo} />;
   return (
     <form method="post" action={"/api/photos/" + photo.id + "/original"}>
       <button className="button" type="submit">
@@ -236,7 +239,82 @@ export function Download({ photo }: { photo: Photo }) {
     </form>
   );
 }
+async function mediaBlob(photo: Photo, action: "original" | "preview", signal: AbortSignal) {
+  const response = await albumFetch("photos/" + photo.id + "/" + action, {
+    method: action === "original" ? "POST" : "GET", signal,
+  });
+  if (!response.ok) {
+    const detail = await response.json().catch(() => null) as { error?: string } | null;
+    throw new Error(detail?.error || "Could not open this photo.");
+  }
+  return response.blob();
+}
+function GuestDownload({ photo }: { photo: Photo }) {
+  const [url, setUrl] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const request = useRef<AbortController | null>(null);
+  useEffect(() => () => request.current?.abort(), []);
+  useEffect(() => () => { if (url) URL.revokeObjectURL(url); }, [url]);
+  async function prepare() {
+    if (busy) return;
+    setBusy(true);
+    setError("");
+    const controller = new AbortController();
+    request.current = controller;
+    try {
+      const blob = await mediaBlob(photo, "original", controller.signal);
+      if (!controller.signal.aborted) setUrl(URL.createObjectURL(blob));
+    } catch (e) {
+      if (!controller.signal.aborted) setError(say(e));
+    } finally {
+      if (!controller.signal.aborted) setBusy(false);
+    }
+  }
+  return <>
+    {url ? <a className="button" href={url} download={photo.name}><Icon name="download" />Save original</a> :
+      <button className="button" disabled={busy} onClick={prepare}><Icon name="download" />{busy ? "Preparing original…" : "Download original"}</button>}
+    <Message value={error} />
+  </>;
+}
+function GuestPreview({ photo }: { photo: Photo }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [url, setUrl] = useState("");
+  const [error, setError] = useState(false);
+  useEffect(() => {
+    const controller = new AbortController();
+    let objectUrl = "";
+    async function load() {
+      try {
+        const blob = await mediaBlob(photo, "preview", controller.signal);
+        if (controller.signal.aborted) return;
+        objectUrl = URL.createObjectURL(blob);
+        setUrl(objectUrl);
+      } catch {
+        if (!controller.signal.aborted) setError(true);
+      }
+    }
+    let observer: IntersectionObserver | undefined;
+    if (ref.current && typeof IntersectionObserver !== "undefined") {
+      observer = new IntersectionObserver((entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          observer?.disconnect();
+          void load();
+        }
+      }, { rootMargin: "250px" });
+      observer.observe(ref.current);
+    } else void load();
+    return () => {
+      controller.abort();
+      observer?.disconnect();
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [photo.id]);
+  return url ? <img src={url} alt={photo.name} /> :
+    <div ref={ref} className="noPreview"><Icon name="photo" /><span>{error ? "Preview unavailable" : "Loading photo…"}</span></div>;
+}
 export function Cover({ photo }: { photo: Photo }) {
+  if (photo.preview && isGuestWebsite()) return <GuestPreview key={photo.id} photo={photo} />;
   return photo.preview ? (
     <img
       loading="lazy"

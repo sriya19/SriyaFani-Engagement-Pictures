@@ -44,22 +44,23 @@ async function paginate(statement, params, url) {
     next: results.length > take ? skip + take : null,
   };
 }
-async function handle(request, env, ctx) {
+async function handle(request, env, ctx, guestWeb) {
   const url = new URL(request.url),
-    path = url.pathname.slice(4),
+    path = url.pathname.slice(guestWeb ? "/api/guest".length : "/api".length),
     method = request.method;
   if (method !== "GET" && method !== "POST") fail(405, "Method unavailable.");
-  if (method === "POST") sameOrigin(request);
+  if (method === "POST" && !guestWeb) sameOrigin(request);
+  if (guestWeb && path.startsWith("/host/")) fail(403, "Guest access only.");
   const db = env.DB;
   if (path === "/me" && method === "GET") {
-    const a = await identity(request, env);
+    const a = await identity(request, env, guestWeb);
     return json({ role: a.role, status: a.status, name: a.name, smsEnabled: smsReady(env) });
   }
-  if (path === "/otp/start" && method === "POST") return start(request, env);
+  if (path === "/otp/start" && method === "POST") return start(request, env, guestWeb);
   if (path === "/otp/check" && method === "POST")
-    return finish(request, env, ctx);
-  if (path === "/logout" && method === "POST") return logout(request, env);
-  const actor = await identity(request, env);
+    return finish(request, env, ctx, guestWeb);
+  if (path === "/logout" && method === "POST") return logout(request, env, guestWeb);
+  const actor = await identity(request, env, guestWeb);
   if (path.startsWith("/host/")) {
     if (actor.role !== "host")
       fail(403, "Please sign in with the host account.");
@@ -209,10 +210,16 @@ async function handle(request, env, ctx) {
   fail(404, "Page unavailable.");
 }
 export async function albumApi(request, env, ctx) {
+  const guestWeb = new URL(request.url).pathname.startsWith("/api/guest/");
+  if (guestWeb && (!env.GUEST_WEB_ORIGIN || request.headers.get("Origin") !== env.GUEST_WEB_ORIGIN))
+    return json({ error: "Please open the guest invitation." }, 403);
+  let response;
   try {
-    return await handle(request, env, ctx);
+    response = guestWeb && request.method === "OPTIONS"
+      ? new Response(null, { status: 204, headers: privateHeaders })
+      : await handle(request, env, ctx, guestWeb);
   } catch (error) {
-    return error instanceof AlbumError
+    response = error instanceof AlbumError
       ? json({ error: error.message }, error.status)
       : json(
           {
@@ -222,4 +229,14 @@ export async function albumApi(request, env, ctx) {
           500,
         );
   }
+  if (guestWeb) {
+    response.headers.set("Access-Control-Allow-Origin", env.GUEST_WEB_ORIGIN);
+    response.headers.set("Vary", "Origin");
+    if (request.method === "OPTIONS") {
+      response.headers.set("Access-Control-Allow-Methods", "GET, POST");
+      response.headers.set("Access-Control-Allow-Headers", "Authorization, Content-Type");
+      response.headers.set("Access-Control-Max-Age", "600");
+    }
+  }
+  return response;
 }

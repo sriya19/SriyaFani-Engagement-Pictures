@@ -16,13 +16,18 @@ export function smsReady(env) {
       env.TWILIO_VERIFY_SERVICE_SID,
   );
 }
-export async function identity(request, env) {
+function guestToken(request, kind, guestWeb) {
+  if (!guestWeb) return readCookie(request, kind);
+  const match = /^Bearer ([a-f0-9]{64})$/.exec(request.headers.get("Authorization") || "");
+  return match ? match[1] : "";
+}
+export async function identity(request, env, guestWeb = false) {
   const visitorEmail = request.headers
     .get("oai-authenticated-user-email")
     ?.trim()
     .toLowerCase();
   if (
-    env.SITES_OWNER_EMAIL &&
+    !guestWeb && env.SITES_OWNER_EMAIL &&
     visitorEmail &&
     request.headers.get("oai-authenticated-user-id")
   ) {
@@ -33,7 +38,7 @@ export async function identity(request, env) {
     if (hostEmails.some((email) => email.trim().toLowerCase() === visitorEmail))
       return { role: "host" };
   }
-  const token = readCookie(request, "session");
+  const token = guestToken(request, "session", guestWeb);
   if (!/^[0-9a-f]{64}$/.test(token)) return { role: "visitor" };
   const guest = await env.DB.prepare(
     "SELECT g.id, g.name, g.phone, g.status FROM sessions s JOIN guests g ON g.id=s.guest WHERE s.token=? AND s.expires>?",
@@ -41,7 +46,7 @@ export async function identity(request, env) {
     .bind(await digest(token), Date.now())
     .first();
   if (!guest) return { role: "visitor" };
-  if (env.OWNER_PHONE && guest.phone === env.OWNER_PHONE)
+  if (!guestWeb && env.OWNER_PHONE && guest.phone === env.OWNER_PHONE)
     return { role: "host", id: guest.id };
   return {
     role: "guest",
@@ -103,7 +108,7 @@ async function cleanup(db) {
     ),
   );
 }
-export async function start(request, env) {
+export async function start(request, env, guestWeb) {
   if (!smsReady(env))
     fail(
       503,
@@ -152,6 +157,7 @@ export async function start(request, env) {
       Date.now() + ttl * 1000,
     )
     .run();
+  if (guestWeb) return json({ sent: true, challenge: token });
   return json({ sent: true }, 200, {
     "Set-Cookie": cookie(request, "challenge", token, ttl),
   });
@@ -180,12 +186,12 @@ export async function notifyHost(env, guest, origin) {
       .bind(guest)
       .run();
 }
-export async function finish(request, env, ctx) {
+export async function finish(request, env, ctx, guestWeb) {
   if (!smsReady(env)) fail(503, "SMS invitations are not open yet.");
   const { code } = await body(request);
   if (typeof code !== "string" || !/^\d{4,10}$/.test(code))
     fail(400, "Enter the code from your text message.");
-  const token = readCookie(request, "challenge");
+  const token = guestToken(request, "challenge", guestWeb);
   if (!/^[0-9a-f]{64}$/.test(token))
     fail(400, "Request a new verification code.");
   const key = await digest(token),
@@ -234,18 +240,20 @@ export async function finish(request, env, ctx) {
     ctx.waitUntil(
       notifyHost(env, guest.id, new URL(request.url).origin).catch(() => {}),
     );
+  if (guestWeb) return json({ verified: true, session });
   const response = json({ verified: true }, 200, {
     "Set-Cookie": cookie(request, "session", session, seconds),
   });
   response.headers.append("Set-Cookie", cookie(request, "challenge", "", 0));
   return response;
 }
-export async function logout(request, env) {
-  const session = readCookie(request, "session");
+export async function logout(request, env, guestWeb) {
+  const session = guestToken(request, "session", guestWeb);
   if (session)
     await env.DB.prepare("DELETE FROM sessions WHERE token=?")
       .bind(await digest(session))
       .run();
+  if (guestWeb) return json({ ok: true });
   return json({ ok: true }, 200, {
     "Set-Cookie": cookie(request, "session", "", 0),
   });

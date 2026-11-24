@@ -4,9 +4,11 @@ import { api, Icon, Kolam, Lotus, Me, Message, Modal, say } from "./shared";
 import Access from "./Access";
 import Gallery from "./Gallery";
 import Host from "./Host";
-export default function Album({ hostPage = false, switchHostAccount }: {
+export default function Album({ hostPage = false, switchHostAccount, homePath = "/", guestOnly = false }: {
   hostPage?: boolean;
   switchHostAccount?: string;
+  homePath?: string;
+  guestOnly?: boolean;
 }) {
   const [me, setMe] = useState<Me>({ role: "visitor" }),
     [ready, setReady] = useState(false),
@@ -49,12 +51,12 @@ export default function Album({ hostPage = false, switchHostAccount }: {
     <>
       <header className="mast">
         <div className="shell nav">
-          <a className="mark" href="/" aria-label="Sriya and Fani invitation">
+          <a className="mark" href={homePath} aria-label="Sriya and Fani invitation">
             <Lotus />
             Sriya <i>&amp;</i> Fani
           </a>
           <nav aria-label="Main navigation">
-            <a className={"navLink" + (home ? " current" : "")} href="/">
+            <a className={"navLink" + (home ? " current" : "")} href={homePath}>
               Invitation
             </a>
             <button
@@ -119,7 +121,7 @@ export default function Album({ hostPage = false, switchHostAccount }: {
                 <div className="arch">
                   <img
                     className="heroImage"
-                    src="/lotus-pond.webp"
+                    src={homePath + "lotus-pond.webp"}
                     alt="Pink lotuses bloom above a still green pond in a hand-painted botanical illustration."
                     fetchPriority="high"
                   />
@@ -168,15 +170,14 @@ export default function Album({ hostPage = false, switchHostAccount }: {
             <button className="plain" onClick={() => setDialog("privacy")}>
               Album privacy
             </button>
-            <span aria-hidden="true">·</span>
-            <a href="/host">Host studio</a>
+            {!guestOnly && <><span aria-hidden="true">·</span><a href="/host" target="_top">Host studio</a></>}
             {me.role === "guest" && (
               <button
                 className="plain"
                 onClick={async () => {
                   try {
                     await api("logout", {});
-                    location.assign("/");
+                    location.assign(homePath);
                   } catch (e) {
                     setNote(say(e));
                   }

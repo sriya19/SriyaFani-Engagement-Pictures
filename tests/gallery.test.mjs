@@ -304,6 +304,46 @@ test("verified approval gates previews and original bytes, and favorites and dow
       (await decode(await call("me", { headers: guest }))).role,
       "visitor",
     );
+    // The GitHub invitation works without third-party cookies or a platform login.
+    const pagesOrigin = "https://album-guest.github.io";
+    const pagesHeaders = { Origin: pagesOrigin, "Sec-Fetch-Site": "cross-site" };
+    async function fromPages(path, options = {}) {
+      return call("guest/" + path, { ...options, headers: { ...pagesHeaders, ...options.headers } });
+    }
+    assert.equal((await fromPages("me")).status, 403);
+    env.GUEST_WEB_ORIGIN = pagesOrigin;
+    const preflight = await fromPages("otp/check", { method: "OPTIONS" });
+    assert.equal(preflight.status, 204);
+    assert.equal(preflight.headers.get("Access-Control-Allow-Origin"), pagesOrigin);
+    assert.equal(preflight.headers.has("Access-Control-Allow-Credentials"), false);
+    assert.equal((await fromPages("me", { headers: { Origin: "https://other.example" } })).status, 403);
+    assert.equal((await decode(await fromPages("me", { headers: admin }))).role, "visitor");
+    assert.equal((await fromPages("host/guests", { headers: admin })).status, 403);
+    sql.exec("DELETE FROM limits");
+    const ticket = await fromPages("otp/start", { data: guestInput });
+    const challengeToken = (await decode(ticket)).challenge;
+    assert.match(challengeToken, /^[0-9a-f]{64}$/);
+    assert.equal(ticket.headers.has("Set-Cookie"), false);
+    const proof = { Authorization: "Bearer " + challengeToken };
+    assert.equal((await fromPages("otp/check", { data: { code: "000000" }, headers: proof })).status, 400);
+    const verified = await fromPages("otp/check", { data: { code: "123456" }, headers: proof });
+    const sessionToken = (await decode(verified)).session;
+    assert.match(sessionToken, /^[0-9a-f]{64}$/);
+    assert.equal(verified.headers.has("Set-Cookie"), false);
+    const bearer = { Authorization: "Bearer " + sessionToken };
+    assert.equal((await fromPages("photos", { headers: bearer })).status, 403);
+    await decode(await call("host/guest", { headers: admin, data: { id: person, status: "approved" } }));
+    assert.equal((await decode(await fromPages("photos", { headers: bearer }))).items[0].id, p.id);
+    assert.equal((await fromPages("photos", { headers: { Cookie: "__Host-sf_session=" + sessionToken } })).status, 403);
+    assert.equal((await call("photos", { headers: bearer })).status, 403);
+    assert.equal((await fromPages("photos/" + p.id + "/preview", { headers: bearer })).status, 200);
+    await decode(await fromPages("photos/" + p.id + "/favorite", { data: { on: true }, headers: bearer }));
+    const pagesOriginal = await fromPages("photos/" + p.id + "/original", { headers: bearer, method: "POST" });
+    assert.deepEqual(new Uint8Array(await pagesOriginal.arrayBuffer()), bytes);
+    await decode(await call("host/guest", { headers: admin, data: { id: person, status: "revoked" } }));
+    assert.equal((await fromPages("photos/" + p.id + "/original", { headers: bearer, method: "POST" })).status, 403);
+    await decode(await fromPages("logout", { headers: bearer, data: {} }));
+    assert.equal((await decode(await fromPages("me", { headers: bearer }))).role, "visitor");
     const rootId = "drive-root-fixture",
       fileId = "drive-file-fixture";
     const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });

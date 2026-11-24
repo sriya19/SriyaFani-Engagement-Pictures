@@ -17,6 +17,8 @@ Open the local address printed by Wrangler. For a local SMS test, create an igno
 
 ## Deploy your own copy on Cloudflare
 
+The GitHub Pages invitation uses the `gh-pages` branch. Build it with `npm run build:pages` and publish the contents of `dist/` to that branch. The guest page calls the hosted album for mobile verification, approvals and private photographs. Its tab-scoped session also works in browsers that block third-party cookies. Set `GUEST_WEB_ORIGIN` on the backend to the exact Pages origin and use `ALBUM_API_ORIGIN` at build time if the backend address changes.
+
 1. Deploy from this repository. Configure folder access and server credentials in the hosting account. The invitation artwork and fonts are included here. Engagement originals, guest details and download records belong in the private bucket and database.
 2. Log in to Cloudflare with `npx wrangler login`. Create a D1 database with `npx wrangler d1 create sriya-fani-album`. Copy its returned database ID into the `DB` entry in `wrangler.jsonc`. Create a private R2 bucket with `npx wrangler r2 bucket create sriya-fani-album-originals`. You can choose your own database and bucket names if you update the configuration. Leave public R2 access disabled. Review the account's plan and any storage or SMS costs before activation.
 3. Set the server secrets listed below in Cloudflare Workers settings or through `npx wrangler secret put KEY_NAME`. Use a sender that can reach your guests' destinations.
