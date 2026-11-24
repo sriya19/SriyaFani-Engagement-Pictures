@@ -253,6 +253,15 @@ function canSaveToPhotos() {
     return false;
   }
 }
+const imageTypes: Record<string, string> = {
+  jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", gif: "image/gif",
+  heic: "image/heic", heif: "image/heif", tif: "image/tiff", tiff: "image/tiff", avif: "image/avif",
+};
+// Phones only offer "Save Image" for files labelled as images.
+function imageType(name: string, served: string) {
+  if (served.startsWith("image/")) return served;
+  return imageTypes[name.split(".").pop()?.toLowerCase() || ""] || served || "application/octet-stream";
+}
 function saveFile(file: File) {
   const url = URL.createObjectURL(file);
   const link = document.createElement("a");
@@ -281,7 +290,7 @@ function SaveButtons({ photo }: { photo: Photo }) {
     request.current = controller;
     const blob = await mediaBlob(photo, "original", controller.signal);
     original.current = new File([blob], photo.name, {
-      type: blob.type || "application/octet-stream",
+      type: imageType(photo.name, blob.type),
     });
     return original.current;
   }
