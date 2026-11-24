@@ -13,7 +13,7 @@ export default function Album({ hostPage = false, switchHostAccount, homePath = 
   const [me, setMe] = useState<Me>({ role: "visitor" }),
     [ready, setReady] = useState(false),
     [opened, setOpened] = useState(false),
-    [dialog, setDialog] = useState<"access" | "note" | "privacy" | null>(null),
+    [dialog, setDialog] = useState<"access" | "note" | null>(null),
     [note, setNote] = useState("");
   const refresh = useCallback(async () => {
     const a = await api<Me>("me");
@@ -187,10 +187,7 @@ export default function Album({ hostPage = false, switchHostAccount, homePath = 
             With love, <i>Sriya &amp; Fani</i>
           </span>
           <div>
-            <button className="plain" onClick={() => setDialog("privacy")}>
-              Album privacy
-            </button>
-            {!guestOnly && <><span aria-hidden="true">·</span><a href="/host" target="_top">Host studio</a></>}
+            {!guestOnly && <a href="/host" target="_top">Host studio</a>}
             {me.role === "guest" && (
               <button
                 className="plain"
@@ -211,18 +208,12 @@ export default function Album({ hostPage = false, switchHostAccount, homePath = 
       </footer>
       {dialog && (
         <Modal
-          title={
-            dialog === "access"
-              ? "Guest access"
-              : dialog === "note"
-                ? "A note from us"
-                : "Album privacy"
-          }
+          title={dialog === "access" ? "Guest access" : "A note from us"}
           close={() => setDialog(null)}
         >
           {dialog === "access" ? (
             <Access me={me} refresh={refresh} />
-          ) : dialog === "note" ? (
+          ) : (
             <div className="letter">
               <Lotus className="formLotus" />
               <p className="eyebrow">To our family &amp; friends</p>
@@ -240,23 +231,6 @@ export default function Album({ hostPage = false, switchHostAccount, homePath = 
               </p>
               <button className="button" onClick={enter}>
                 Open the album
-              </button>
-            </div>
-          ) : (
-            <div className="letter">
-              <Icon name="lock" />
-              <h2>Album privacy</h2>
-              <p>
-                We use the name and mobile number you submit to review your request. Access belongs to the browser you used to request it.
-                The hosts can see which photos you favorite or request to
-                download, along with the time.
-              </p>
-              <p>
-                Downloads contain the original photo files. Please share these
-                family photographs with care.
-              </p>
-              <button className="button light" onClick={() => setDialog(null)}>
-                Close
               </button>
             </div>
           )}
