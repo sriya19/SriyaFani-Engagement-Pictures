@@ -1,3 +1,4 @@
 [
-  { "src": "videos/bride-reel.mp4", "poster": "videos/bride-reel.jpg", "title": "The bride reel", "vertical": true }
+  { "src": "videos/bride-reel.mp4", "poster": "videos/bride-reel.jpg", "title": "The bride reel", "vertical": true },
+  { "src": "videos/groom-reel.mp4", "poster": "videos/groom-reel.jpg", "title": "The groom reel", "vertical": true }
 ]
