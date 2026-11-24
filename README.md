@@ -1,5 +1,7 @@
 # Sriya & Fani · The Engagement Album
 
+[Open the guest invitation](https://sriya19.github.io/SriyaFani-Engagement-Pictures/)
+
 The invitation uses green, ivory, lotus artwork and traditional kolam details. The gallery holds full original files in a private R2 bucket. Only published photographs are visible to approved guests. The owner dashboard is at `/host`.
 
 ## Run the project
@@ -15,9 +17,13 @@ npm run dev
 
 Open the local address printed by Wrangler. For a local SMS test, create an ignored `.dev.vars` file with the same keys described below, using a test account or an approved test number. The integration tests use a mocked provider and send no messages.
 
-## Deploy your own copy on Cloudflare
+## Publish the GitHub guest link
 
-The GitHub Pages invitation uses the `gh-pages` branch. Build it with `npm run build:pages` and publish the contents of `dist/` to that branch. The guest page calls the hosted album for mobile verification, approvals and private photographs. Its tab-scoped session also works in browsers that block third-party cookies. Set `GUEST_WEB_ORIGIN` on the backend to the exact Pages origin and use `ALBUM_API_ORIGIN` at build time if the backend address changes.
+Open **Settings → Pages**, select **Deploy from a branch**, choose **gh-pages** and **/(root)**, and save. The guest page calls the hosted album for mobile verification, approvals and private photographs. Its session stays in the guest's browser tab.
+
+For future changes, build with `npm run build:pages` and publish the contents of `dist/` to the `gh-pages` branch. Set `GUEST_WEB_ORIGIN` on the backend to the exact Pages origin and use `ALBUM_API_ORIGIN` at build time if the backend address changes.
+
+## Deploy your own copy on Cloudflare
 
 1. Deploy from this repository. Configure folder access and server credentials in the hosting account. The invitation artwork and fonts are included here. Engagement originals, guest details and download records belong in the private bucket and database.
 2. Log in to Cloudflare with `npx wrangler login`. Create a D1 database with `npx wrangler d1 create sriya-fani-album`. Copy its returned database ID into the `DB` entry in `wrangler.jsonc`. Create a private R2 bucket with `npx wrangler r2 bucket create sriya-fani-album-originals`. You can choose your own database and bucket names if you update the configuration. Leave public R2 access disabled. Review the account's plan and any storage or SMS costs before activation.

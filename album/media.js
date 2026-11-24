@@ -9,11 +9,11 @@ import { drivePhoto, original, thumbnail } from "./drive.js";
 const photoKey = (id) => "originals/" + id;
 const previewKey = (id) => "previews/" + id;
 const directLimit = 90 * 1024 * 1024;
-async function insert(env, id, drive, name, mime, size, preview) {
+async function insert(env, id, drive, name, mime, size, preview, sha256 = null) {
   await env.DB.prepare(
-    "INSERT INTO photos(id,drive,name,mime,bytes,preview,created) VALUES(?,?,?,?,?,?,?)",
+    "INSERT INTO photos(id,drive,name,mime,bytes,preview,created,sha256) VALUES(?,?,?,?,?,?,?,?)",
   )
-    .bind(id, drive, name, mime, size, preview, Date.now())
+    .bind(id, drive, name, mime, size, preview, Date.now(), sha256)
     .run();
 }
 export async function importDrive(env, file) {
@@ -52,6 +52,41 @@ export async function importDrive(env, file) {
   }
   return json({ id }, 201);
 }
+function byDigest(env, digest) {
+  return env.DB.prepare("SELECT id,preview FROM photos WHERE sha256=?").bind(digest).first();
+}
+async function storedDigest(object) {
+  let digest = object.checksums?.sha256;
+  if (!digest && typeof crypto.DigestStream === "function") {
+    const stream = new crypto.DigestStream("SHA-256");
+    await object.body.pipeTo(stream);
+    digest = await stream.digest;
+  }
+  if (!digest) digest = await crypto.subtle.digest("SHA-256", await new Response(object.body).arrayBuffer());
+  return Array.from(new Uint8Array(digest), (n) => n.toString(16).padStart(2, "0")).join("");
+}
+async function existingUpload(env, name, bytes, digest) {
+  const known = await byDigest(env, digest);
+  if (known) return known;
+  // Older uploads lack hashes. Compare saved original bytes before skipping one.
+  const { results } = await env.DB.prepare("SELECT id,preview FROM photos WHERE sha256 IS NULL AND name=? AND bytes=?").bind(name, bytes).all();
+  for (const candidate of results) {
+    const original = await env.BUCKET.get(photoKey(candidate.id));
+    if (original && await storedDigest(original) === digest) {
+      await env.DB.prepare("UPDATE OR IGNORE photos SET sha256=? WHERE id=? AND sha256 IS NULL").bind(digest, candidate.id).run();
+      return await byDigest(env, digest) || candidate;
+    }
+  }
+  return null;
+}
+export async function matchUpload(env, input) {
+  const { name, bytes, digest } = input;
+  if (typeof name !== "string" || name.length > 240 || !Number.isSafeInteger(bytes) ||
+      bytes < 1 || bytes > directLimit || typeof digest !== "string" || !/^[a-f0-9]{64}$/.test(digest))
+    fail(400, "Invalid original file details.");
+  const existing = await existingUpload(env, name, bytes, digest);
+  return json(existing ? { ...existing, existing: true } : { existing: false });
+}
 export async function upload(request, env) {
   const mime = (request.headers.get("Content-Type") || "").split(";")[0];
   let name;
@@ -74,14 +109,22 @@ export async function upload(request, env) {
       413,
       "Choose an image under 90 MiB, or import it directly from Drive.",
     );
+  const digest = request.headers.get("X-Photo-SHA256");
+  if (digest && !/^[a-f0-9]{64}$/.test(digest)) fail(400, "Invalid original checksum.");
+  if (digest) {
+    const existing = await existingUpload(env, name, bytes, digest);
+    if (existing) return json({ ...existing, existing: true });
+  }
   const id = crypto.randomUUID(),
-    obj = await env.BUCKET.put(photoKey(id), request.body);
+    obj = await env.BUCKET.put(photoKey(id), request.body, digest ? { sha256: digest } : {});
   try {
     if (!obj || obj.size !== bytes)
       fail(400, "The original was incomplete. Please upload it again.");
-    await insert(env, id, null, name, mime, bytes, null);
+    await insert(env, id, null, name, mime, bytes, null, digest);
   } catch (e) {
     await env.BUCKET.delete(photoKey(id));
+    const raced = digest && await byDigest(env, digest);
+    if (raced) return json({ ...raced, existing: true });
     throw e;
   }
   return json({ id }, 201);

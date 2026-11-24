@@ -18,6 +18,7 @@ import {
 import {
   favorite,
   importDrive,
+  matchUpload,
   photo,
   servePhoto,
   upload,
@@ -103,19 +104,24 @@ async function handle(request, env, ctx, guestWeb) {
       return importDrive(env, (await body(request)).file);
     if (path === "/host/upload" && method === "POST")
       return upload(request, env);
+    if (path === "/host/upload-match" && method === "POST")
+      return matchUpload(env, await body(request));
     const thumb = path.match(thumbUpload);
     if (thumb && method === "POST")
       return uploadPreview(request, env, thumb[1]);
-    if (path === "/host/photos" && method === "GET")
-      return json(
-        await paginate(
+    if (path === "/host/photos" && method === "GET") {
+      const [page, totals] = await Promise.all([
+        paginate(
           db.prepare(
             "SELECT id,name,mime,bytes,preview,published FROM photos ORDER BY created DESC,id LIMIT ? OFFSET ?",
           ),
           [],
           url,
         ),
-      );
+        db.prepare("SELECT COUNT(*) AS total, COALESCE(SUM(published),0) AS published FROM photos").first(),
+      ]);
+      return json({ ...page, ...totals });
+    }
     if (path === "/host/publish" && method === "POST") {
       const input = await body(request);
       if (typeof input.published !== "boolean" || typeof input.id !== "string")

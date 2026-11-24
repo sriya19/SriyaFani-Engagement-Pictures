@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   api,
   Cover,
@@ -42,13 +42,19 @@ export default function Host() {
     [next, setNext] = useState<number | null>(null),
     [busy, setBusy] = useState(false),
     [note, setNote] = useState("");
+  const [totals, setTotals] = useState({ total: 0, published: 0 });
+  const outstanding = useRef(new Set<string>());
+  const [changing, setChanging] = useState<Set<string>>(new Set());
+  const [photoErrors, setPhotoErrors] = useState<Record<string, string>>({});
   async function load(target = tab, start = 0) {
     setBusy(true);
     setNote("");
     try {
-      const r = await api<Page<any>>("host/" + target + "?offset=" + start);
-      if (target === "photos")
+      const r = await api<Page<any> & { total: number; published: number }>("host/" + target + "?offset=" + start);
+      if (target === "photos") {
         setPhotos((v) => (start ? [...v, ...r.items] : r.items));
+        setTotals({ total: r.total, published: r.published });
+      }
       if (target === "guests")
         setGuests((v) => (start ? [...v, ...r.items] : r.items));
       if (target === "activity")
@@ -82,6 +88,23 @@ export default function Host() {
       setBusy(false);
     }
   }
+  async function publish(photo: Photo) {
+    if (outstanding.current.has(photo.id)) return;
+    outstanding.current.add(photo.id);
+    setChanging(new Set(outstanding.current));
+    setPhotoErrors((old) => ({ ...old, [photo.id]: "" }));
+    const published = !photo.published;
+    try {
+      await api("host/publish", { id: photo.id, published });
+      setPhotos((current) => current.map((p) => p.id === photo.id ? { ...p, published: Number(published) } : p));
+      setTotals((v) => ({ ...v, published: v.published + (published ? 1 : -1) }));
+    } catch (e) {
+      setPhotoErrors((old) => ({ ...old, [photo.id]: say(e) }));
+    } finally {
+      outstanding.current.delete(photo.id);
+      setChanging(new Set(outstanding.current));
+    }
+  }
   return (
     <section className="content">
       <p className="eyebrow">Sriya &amp; Fani</p>
@@ -94,7 +117,8 @@ export default function Host() {
           ["activity", "Activity"],
         ].map(([v, t]) => (
           <button
-            disabled={busy}
+            type="button"
+            disabled={busy || changing.size > 0}
             key={v}
             aria-pressed={tab === v}
             onClick={() => setTab(v)}
@@ -104,8 +128,8 @@ export default function Host() {
         ))}
       </div>
       <Message value={note} />
-      {tab === "import" && setup && (
-        <>
+      {setup && (
+        <div hidden={tab !== "import"}>
           <div className="setupLine">
             <span>SMS {setup.sms ? "connected" : "awaiting setup"}</span>
             <span>
@@ -113,16 +137,17 @@ export default function Host() {
             </span>
             <span>Email alerts {setup.email ? "connected" : "off"}</span>
           </div>
-          <Upload done={() => {}} />
+          <Upload viewPhotos={() => setTab("photos")} />
           <DrivePicker
             setup={setup}
             update={(folder) => setSetup({ ...setup, folder })}
             done={() => {}}
           />
-        </>
+        </div>
       )}
       {tab === "photos" && (
         <>
+          {totals.total > 0 && <p className="photoCount" aria-live="polite">{totals.total} originals · {totals.published} published · {totals.total - totals.published} drafts. Showing {photos.length} of {totals.total}.</p>}
           {!photos.length && !busy && (
             <div className="empty">
               <Lotus />
@@ -148,15 +173,16 @@ export default function Host() {
                   <div className="actions">
                     <button
                       className="button light"
-                      disabled={busy}
-                      onClick={() =>
-                        change("publish", { id: p.id, published: !p.published })
-                      }
+                      type="button"
+                      disabled={busy || changing.has(p.id)}
+                      aria-busy={changing.has(p.id)}
+                      onClick={() => void publish(p)}
                     >
                       {p.published ? "Unpublish" : "Publish"}
                     </button>
                     <Download photo={p} />
                   </div>
+                  <Message value={photoErrors[p.id] || ""} />
                 </div>
               </article>
             ))}
@@ -265,13 +291,14 @@ export default function Host() {
       )}
       {tab !== "import" && (
         <div className="actions">
-          <button className="textButton" disabled={busy} onClick={() => load()}>
+          <button type="button" className="textButton" disabled={busy || changing.size > 0} onClick={() => load()}>
             {busy ? "Loading…" : "Refresh"}
           </button>
           {next !== null && (
             <button
               className="button light"
-              disabled={busy}
+              type="button"
+              disabled={busy || changing.size > 0}
               onClick={() => load(tab, next)}
             >
               Show more

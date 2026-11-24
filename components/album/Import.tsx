@@ -1,5 +1,6 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { planUpload } from "../../album/upload-files.js";
 import { api, Icon, Message, say, size } from "./shared";
 export type Setup = {
   folder: string;
@@ -48,65 +49,101 @@ async function put(
   });
   const result = (await r.json().catch(() => ({}))) as {
     id: string;
+    existing?: boolean;
+    preview?: string;
     error?: string;
   };
-  if (!r.ok) throw Error(result.error || "Upload failed.");
+  if (!r.ok || !r.headers.get("Content-Type")?.includes("application/json"))
+    throw Error(result.error || "Upload failed. Reopen the host studio and retry this selection.");
   return result;
 }
-export function Upload({ done }: { done: () => void }) {
-  const [busy, setBusy] = useState(false),
-    [note, setNote] = useState("");
+type UploadProgress = {
+  total: number; processed: number; added: number; existing: number; issues: string[];
+};
+const initialUpload: UploadProgress = { total: 0, processed: 0, added: 0, existing: 0, issues: [] };
+export function Upload({ viewPhotos }: { viewPhotos: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState<UploadProgress | null>(null);
+  const [current, setCurrent] = useState("");
+  const running = useRef(false);
   async function run(files: File[]) {
-    if (!files.length) return;
+    if (!files.length || running.current) return;
+    running.current = true;
     setBusy(true);
-    const errors: string[] = [];
-    let count = 0;
-    for (const file of files) {
-      setNote("Uploading " + file.name + "…");
-      try {
-        const { id } = await put("host/upload", file, {
-          "X-Photo-Name": encodeURIComponent(file.name),
-        });
-        count++;
-        const preview = await makePreview(file);
-        if (preview) await put("host/preview/" + id, preview, {});
-      } catch (e) {
-        errors.push(file.name + " — " + say(e));
+    setProgress(null);
+    setCurrent("Reading your selection…");
+    const state = { ...initialUpload, issues: [] as string[] };
+    let batch: Awaited<ReturnType<typeof planUpload>> | undefined;
+    try {
+      batch = await planUpload(files);
+      state.total = batch.photos.length;
+      state.issues.push(...batch.skipped);
+      setProgress({ ...state });
+      for (const item of batch.photos) {
+        setCurrent(item.label);
+        try {
+          const file = await item.read();
+          const hash = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
+          const digest = Array.from(new Uint8Array(hash), b => b.toString(16).padStart(2, "0")).join("");
+          let saved = await api<{ id: string; existing?: boolean; preview?: string }>("host/upload-match", { name: file.name, bytes: file.size, digest });
+          if (!saved.existing) saved = await put("host/upload", file, {
+            "X-Photo-Name": encodeURIComponent(file.name), "X-Photo-SHA256": digest,
+          });
+          if (saved.existing) state.existing++;
+          else state.added++;
+          if (!saved.preview) {
+            try {
+              const preview = await makePreview(file);
+              if (preview) await put("host/preview/" + saved.id, preview, {});
+              else state.issues.push(item.label + " — original saved. This browser could not make a preview.");
+            } catch (e) {
+              state.issues.push(item.label + " — original saved. Preview failed: " + say(e));
+            }
+          }
+        } catch (e) {
+          state.issues.push(item.label + " — " + say(e));
+        }
+        state.processed++;
+        setProgress({ ...state, issues: [...state.issues] });
+      }
+    } catch (e) {
+      state.issues.push(say(e));
+    } finally {
+      try { await batch?.close(); } finally {
+        setCurrent("");
+        setProgress({ ...state, issues: [...state.issues] });
+        setBusy(false);
+        running.current = false;
       }
     }
-    setNote(
-      count +
-        " original" +
-        (count === 1 ? "" : "s") +
-        " added to drafts." +
-        (errors.length ? " " + errors.join(" ") : ""),
-    );
-    setBusy(false);
-    done();
   }
+  const pick = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = "";
+    void run(files);
+  };
   return (
     <div className="actionPanel">
       <h3>Upload originals</h3>
-      <p>
-        Select photos from your device or a synced Google Drive folder. Each
-        original arrives as a draft.
-      </p>
-      <label className={"button light fileButton" + (busy ? " disabled" : "")}>
-        <Icon name="photo" />
-        {busy ? "Uploading…" : "Choose photos"}
-        <input
-          type="file"
-          accept="image/jpeg,image/png,image/webp,image/gif,image/avif,image/heic,image/heif,image/tiff,.heic,.heif"
-          multiple
-          disabled={busy}
-          onChange={(e) => {
-            const files = Array.from(e.target.files || []);
-            e.target.value = "";
-            void run(files);
-          }}
-        />
-      </label>
-      <Message value={note} />
+      <p>Select photos, a Google Drive ZIP, or an extracted folder. New originals become private drafts. You can select the same files again to finish a partial upload.</p>
+      <div className="actions">
+        <label className={"button light fileButton" + (busy ? " disabled" : "")}>
+          <Icon name="photo" /> Choose photos or ZIPs
+          <input type="file" accept="image/*,.heic,.heif,.tif,.tiff,.zip,application/zip" multiple disabled={busy} onChange={pick} />
+        </label>
+        <label className={"button light fileButton" + (busy ? " disabled" : "")}>
+          Choose a folder
+          <input type="file" multiple ref={(input) => { input?.setAttribute("webkitdirectory", ""); }} disabled={busy} onChange={pick} />
+        </label>
+      </div>
+      {busy && <p role="status">{progress?.total ? (progress.processed + 1) + " of " + progress.total + " · " : ""}{current}</p>}
+      {progress && <div className="uploadResult">
+        <p role="status"><strong>{busy ? "Upload progress" : "Upload complete"}</strong> · {progress.added} added · {progress.existing} already in album · {progress.issues.length} to review</p>
+        {!!progress.issues.length && <details><summary>View file details</summary>
+          <ul>{progress.issues.map((issue, i) => <li key={i}>{issue}</li>)}</ul>
+        </details>}
+        {!busy && <button type="button" className="button light" onClick={viewPhotos}>View album photos</button>}
+      </div>}
     </div>
   );
 }

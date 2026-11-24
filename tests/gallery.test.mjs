@@ -78,6 +78,8 @@ test("verified approval gates previews and original bytes, and favorites and dow
       const bytes = new Uint8Array(await new Response(body).arrayBuffer());
       if (opts?.md5)
         assert.equal(createHash("md5").update(bytes).digest("hex"), opts.md5);
+      if (opts?.sha256)
+        assert.equal(createHash("sha256").update(bytes).digest("hex"), opts.sha256);
       store.set(key, bytes);
       return { size: bytes.length };
     },
@@ -218,6 +220,16 @@ test("verified approval gates previews and original bytes, and favorites and dow
       }),
       201,
     );
+    const hash = createHash("sha256").update(bytes).digest("hex");
+    const match = (digest) => call("host/upload-match", { headers: admin, data: { name: "fixture.jpg", bytes: bytes.length, digest } });
+    assert.equal((await decode(await match("1".repeat(64)))).existing, false);
+    assert.equal((await decode(await match(hash))).id, p.id);
+    const retry = await decode(await call("host/upload", { bytes, headers: { ...admin, "Content-Type": "image/jpeg", "X-Photo-Name": "fixture.jpg", "X-Photo-Bytes": String(bytes.length), "X-Photo-SHA256": hash } }));
+    assert.equal(retry.id, p.id);
+    assert.equal(retry.existing, true);
+    const summary = await decode(await call("host/photos", { headers: admin }));
+    assert.equal(summary.total, 1);
+    assert.equal(summary.published, 0);
     assert.equal(
       (
         await call("photos/" + p.id + "/original", {
