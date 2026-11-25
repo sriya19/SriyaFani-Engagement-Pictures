@@ -3,6 +3,12 @@ import { identity, notifyHost, throttle } from "./auth.js";
 import { deliverPush, queuePush } from "./push.js";
 
 const seconds = 90 * 24 * 3600;
+// Hosts can let every guest in as soon as they share a name and number.
+// This is on unless the host turns it off in Guest requests.
+export async function autoApprove(db) {
+  const row = await db.prepare("SELECT value FROM settings WHERE key='auto_approve'").first();
+  return !row || row.value !== "0";
+}
 export async function requestAccess(request, env, ctx, guestWeb) {
   const existing = await identity(request, env, guestWeb);
   if (existing.role !== "visitor") return json({ received: true });
@@ -21,9 +27,10 @@ export async function requestAccess(request, env, ctx, guestWeb) {
     await throttle(db, "access-ip:" + (request.headers.get("CF-Connecting-IP") || "shared"), 3600000, 60, text);
     await throttle(db, "access-number:" + phone, 3600000, 8, text);
     const id = crypto.randomUUID(), now = Date.now();
+    const status = (await autoApprove(db)) ? "approved" : "pending";
     try {
       await db.batch([
-        db.prepare("INSERT INTO guests(id,phone,name,created,phone_verified) VALUES(?,?,?,?,0)").bind(id, phone, name, now),
+        db.prepare("INSERT INTO guests(id,phone,name,status,created,phone_verified) VALUES(?,?,?,?,?,0)").bind(id, phone, name, status, now),
         db.prepare("INSERT INTO sessions(token,guest,expires) VALUES(?,?,?)").bind(hash, id, now + seconds * 1000),
         queuePush(db, "hosts", id),
         db.prepare("DELETE FROM sessions WHERE expires<=?").bind(now),

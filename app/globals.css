@@ -1003,3 +1003,7 @@ body > main {
 .videoSave .button{text-decoration:none;justify-content:center}
 .videoSave .message{flex-basis:100%;margin:0}
 @media (max-width:620px){.videoSave>.button{flex:1 1 0;min-width:0;white-space:nowrap;padding:.6rem .5rem;font-size:.95rem}}
+.autoApprove label{display:flex;gap:.8rem;align-items:flex-start;cursor:pointer}
+.autoApprove input{width:22px;height:22px;margin-top:.15rem;accent-color:var(--pine);flex:none}
+.autoApprove span{display:grid;gap:.15rem}
+.autoApprove small{color:var(--muted)}

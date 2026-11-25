@@ -34,6 +34,10 @@ test("manual requests are independent per browser and approvals deliver private 
       body:data===undefined?undefined:JSON.stringify(data)});
     return albumApi(request,env,ctx);
   }
+  // This test covers hosts approving by hand, so automatic access is turned off first.
+  assert.equal((await api("host/settings/auto-approve",{headers:{}})).status,403);
+  assert.equal((await (await api("host/settings/auto-approve",{headers:admin,host:true})).json()).on,true);
+  assert.equal((await (await api("host/settings/auto-approve",{data:{on:false},headers:admin,host:true})).json()).on,false);
   const receipts=[], recipients=new Map();
   function browser(id) {
     const ec=createECDH("prime256v1");ec.generateKeys();const auth=randomBytes(16);

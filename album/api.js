@@ -26,7 +26,7 @@ import {
   uploadPreview,
 } from "./media.js";
 import { privateHeaders } from "./common.js";
-import { requestAccess } from "./requests.js";
+import { autoApprove, requestAccess } from "./requests.js";
 import { deliverPush, pushPublicKey, queuePush, subscribePush } from "./push.js";
 import {
   deleteVideo,
@@ -195,6 +195,15 @@ async function handle(request, env, ctx, guestWeb) {
       await db.batch([notification, db.prepare("UPDATE guests SET status=? WHERE id=?").bind(input.status, input.id)]);
       if (input.status === "approved") ctx.waitUntil(deliverPush(env).catch(() => {}));
       return json({ ok: true });
+    }
+    if (path === "/host/settings/auto-approve" && method === "GET")
+      return json({ on: await autoApprove(db) });
+    if (path === "/host/settings/auto-approve" && method === "POST") {
+      const { on } = await body(request);
+      if (typeof on !== "boolean") fail(400, "Choose on or off.");
+      await db.prepare("INSERT INTO settings(key,value) VALUES('auto_approve',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value")
+        .bind(on ? "1" : "0").run();
+      return json({ on });
     }
     if (path === "/host/guest/delete" && method === "POST") {
       const { id } = await body(request);

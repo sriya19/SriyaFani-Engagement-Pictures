@@ -42,6 +42,41 @@ const labels: { [key: string]: string } = {
   favorite: "Added to favorites",
   unfavorite: "Removed from favorites",
 };
+function AutoApprove() {
+  const [on, setOn] = useState<boolean | null>(null),
+    [error, setError] = useState("");
+  useEffect(() => {
+    api<{ on: boolean }>("host/settings/auto-approve")
+      .then((r) => setOn(r.on))
+      .catch((e) => setError(say(e)));
+  }, []);
+  async function toggle() {
+    if (on === null) return;
+    setError("");
+    try {
+      setOn((await api<{ on: boolean }>("host/settings/auto-approve", { on: !on })).on);
+    } catch (e) {
+      setError(say(e));
+    }
+  }
+  return (
+    <div className="actionPanel autoApprove">
+      <label>
+        <input type="checkbox" checked={Boolean(on)} disabled={on === null} onChange={toggle} />
+        <span>
+          <b>Let guests in automatically</b>
+          <small>
+            {on === false
+              ? "Off: new requests wait for you to approve them."
+              : "On: anyone who enters a name and mobile number sees the album right away. You can still revoke anyone below."}
+          </small>
+        </span>
+      </label>
+      <Message value={error} />
+    </div>
+  );
+}
+
 export default function Host() {
   const [tab, setTab] = useState("photos"),
     [setup, setSetup] = useState<Setup | null>(null),
@@ -236,6 +271,7 @@ export default function Host() {
       )}
       {tab === "guests" && (
         <>
+          <AutoApprove />
           <Notifications host registered />
           {guests.length ? (
             <div className="records">
